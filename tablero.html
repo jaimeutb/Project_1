@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tablero — Plataforma de Apoyo Académico</title>
+<style id="page-style">
+:root {
+  --bg: #f5f5f3;
+  --col-bg: #eceae5;
+  --card-bg: #ffffff;
+  --text: #1f2328;
+  --text-muted: #62697a;
+  --border: #ddd9d0;
+  --accent: #6b4fbb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17181a; --col-bg: #202226; --card-bg: #2a2c31;
+    --text: #ecebe9; --text-muted: #a3a9b0; --border: #3a3d43; --accent: #a78bfa;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17181a; --col-bg: #202226; --card-bg: #2a2c31;
+  --text: #ecebe9; --text-muted: #a3a9b0; --border: #3a3d43; --accent: #a78bfa;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 20px 16px 40px;
+}
+header { max-width: 1200px; margin: 0 auto 18px; }
+header h1 { font-size: 1.3rem; margin: 0 0 4px; }
+header p { color: var(--text-muted); font-size: 0.86rem; margin: 0; }
+#status { font-size: 0.78rem; margin-top: 6px; min-height: 16px; color: var(--accent); }
+.board {
+  max-width: 1200px; margin: 0 auto; display: flex; gap: 12px;
+  overflow-x: auto; padding-bottom: 12px;
+}
+.column {
+  background: var(--col-bg); border-radius: 12px; padding: 10px;
+  min-width: 210px; flex: 1 0 210px; display: flex; flex-direction: column;
+}
+.column h2 {
+  font-size: 0.85rem; margin: 4px 6px 10px; display: flex; justify-content: space-between;
+}
+.count { color: var(--text-muted); font-weight: 400; }
+.cardlist { flex: 1; min-height: 40px; display: flex; flex-direction: column; gap: 8px; }
+.card {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 9px;
+  padding: 9px 10px; font-size: 0.82rem; cursor: grab; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.card.dragging { opacity: 0.4; }
+.card .code { font-weight: 700; font-size: 0.78rem; }
+.card .name { margin-top: 2px; }
+.prio {
+  display: inline-block; margin-top: 6px; font-size: 0.68rem; padding: 2px 7px;
+  border-radius: 999px; font-weight: 600;
+}
+.prio-alta { background: #fde2e1; color: #b3261e; }
+.prio-media { background: #fdf1d6; color: #96650a; }
+.prio-baja { background: #dff3e0; color: #256b32; }
+.prio-confirmar { background: #ece3fb; color: #6b4fbb; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .prio-alta { background: #4a2323; color: #ff9d97; }
+  :root:not([data-theme="light"]) .prio-media { background: #4a3c1c; color: #ffcf6b; }
+  :root:not([data-theme="light"]) .prio-baja { background: #1f3b26; color: #7fd18c; }
+  :root:not([data-theme="light"]) .prio-confirmar { background: #362a52; color: #c4b0f5; }
+}
+:root[data-theme="dark"] .prio-alta { background: #4a2323; color: #ff9d97; }
+:root[data-theme="dark"] .prio-media { background: #4a3c1c; color: #ffcf6b; }
+:root[data-theme="dark"] .prio-baja { background: #1f3b26; color: #7fd18c; }
+:root[data-theme="dark"] .prio-confirmar { background: #362a52; color: #c4b0f5; }
+.column.dragover { outline: 2px dashed var(--accent); outline-offset: -4px; }
+footer { max-width: 1200px; margin: 16px auto 0; font-size: 0.76rem; color: var(--text-muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🗂️ Plataforma de Apoyo Académico — Tablero de gestión</h1>
+  <p>Backlog inicial construido a partir de los requerimientos (sección 6) y la priorización MoSCoW (sección 7) del documento del proyecto. Arrastra las tarjetas entre columnas para actualizar el estado.</p>
+  <div id="status"></div>
+</header>
+<div class="board" id="board"></div>
+<footer>Plataforma de Apoyo Académico · Ingeniería de Software · Jaime Mochen y Cristian David Cardeño Gulloso</footer>
+
+<script id="board-state" type="application/json">
+[
+  {"id":"rf01","code":"RF-01","name":"Registro de usuario","priority":"alta","column":"progress"},
+  {"id":"rf02","code":"RF-02","name":"Inicio y cierre de sesión","priority":"alta","column":"progress"},
+  {"id":"rf03","code":"RF-03","name":"Búsqueda de material por asignatura","priority":"alta","column":"todo"},
+  {"id":"rnf01","code":"RNF-01","name":"Seguridad de credenciales","priority":"alta","column":"todo"},
+  {"id":"rf04","code":"RF-04","name":"Filtro de material por semestre o tema","priority":"media","column":"backlog"},
+  {"id":"rf05","code":"RF-05","name":"Visualización y descarga de material","priority":"alta","column":"backlog"},
+  {"id":"rf06","code":"RF-06","name":"Valoración de materiales","priority":"media","column":"backlog"},
+  {"id":"rf07","code":"RF-07","name":"Gestión de material por el administrador","priority":"alta","column":"backlog"},
+  {"id":"rf08","code":"RF-08","name":"Gestión de usuarios y asignaturas","priority":"media","column":"backlog"},
+  {"id":"rf09","code":"RF-09","name":"Carga de material por estudiantes (hipótesis)","priority":"confirmar","column":"backlog"},
+  {"id":"rf10","code":"RF-10","name":"Carga anónima de material (hipótesis)","priority":"confirmar","column":"backlog"},
+  {"id":"rf11","code":"RF-11","name":"Reporte de contenido incorrecto (hipótesis)","priority":"confirmar","column":"backlog"},
+  {"id":"rnf02","code":"RNF-02","name":"Disponibilidad","priority":"media","column":"backlog"},
+  {"id":"rnf03","code":"RNF-03","name":"Escalabilidad","priority":"baja","column":"backlog"},
+  {"id":"rnf04","code":"RNF-04","name":"Usabilidad (hipótesis)","priority":"confirmar","column":"backlog"},
+  {"id":"rnf05","code":"RNF-05","name":"Rendimiento (hipótesis)","priority":"confirmar","column":"backlog"},
+  {"id":"rnf06","code":"RNF-06","name":"Compatibilidad (hipótesis)","priority":"confirmar","column":"backlog"}
+]
+</script>
+
+<script id="board-logic" type="text/plain">
+var COLUMNS = [
+  { key: "backlog", label: "Backlog" },
+  { key: "todo", label: "Por hacer" },
+  { key: "progress", label: "En progreso" },
+  { key: "review", label: "En revisión" },
+  { key: "done", label: "Hecho" },
+];
+var PRIO_LABEL = { alta: "Alta", media: "Media", baja: "Baja", confirmar: "Por confirmar" };
+var state = JSON.parse(document.getElementById('board-state').textContent);
+var boardEl = document.getElementById('board');
+var statusEl = document.getElementById('status');
+
+function renderBoard(s) {
+  boardEl.innerHTML = '';
+  COLUMNS.forEach(function(col) {
+    var cards = s.filter(function(c) { return c.column === col.key; });
+    var colEl = document.createElement('div');
+    colEl.className = 'column';
+    colEl.dataset.col = col.key;
+    colEl.innerHTML = '<h2>' + col.label + ' <span class="count">' + cards.length + '</span></h2>';
+    var listEl = document.createElement('div');
+    listEl.className = 'cardlist';
+    cards.forEach(function(c) {
+      var cardEl = document.createElement('div');
+      cardEl.className = 'card';
+      cardEl.draggable = true;
+      cardEl.dataset.id = c.id;
+      cardEl.innerHTML = '<div class="code">' + c.code + '</div><div class="name">' + c.name +
+        '</div><span class="prio prio-' + c.priority + '">' + PRIO_LABEL[c.priority] + '</span>';
+      cardEl.addEventListener('dragstart', function() { cardEl.classList.add('dragging'); });
+      cardEl.addEventListener('dragend', function() { cardEl.classList.remove('dragging'); });
+      listEl.appendChild(cardEl);
+    });
+    colEl.appendChild(listEl);
+
+    colEl.addEventListener('dragover', function(e) { e.preventDefault(); colEl.classList.add('dragover'); });
+    colEl.addEventListener('dragleave', function() { colEl.classList.remove('dragover'); });
+    colEl.addEventListener('drop', function(e) {
+      e.preventDefault();
+      colEl.classList.remove('dragover');
+      var dragging = document.querySelector('.card.dragging');
+      if (!dragging) return;
+      var id = dragging.dataset.id;
+      var card = state.find(function(c) { return c.id === id; });
+      if (card && card.column !== col.key) {
+        card.column = col.key;
+        renderBoard(state);
+        publishState();
+      }
+    });
+
+    boardEl.appendChild(colEl);
+  });
+}
+
+function fullDocument(s) {
+  var styleText = document.getElementById('page-style').textContent;
+  var logicText = document.getElementById('board-logic').textContent;
+  return '<!DOCTYPE html>\n<html lang="es">\n<head>\n<meta charset="UTF-8">\n' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+    '<title>Tablero — Plataforma de Apoyo Académico</title>\n' +
+    '<style id="page-style">' + styleText + '</style>\n</head>\n<body>\n' +
+    '<header>\n  <h1>🗂️ Plataforma de Apoyo Académico — Tablero de gestión</h1>\n' +
+    '  <p>Backlog inicial construido a partir de los requerimientos (sección 6) y la priorización MoSCoW (sección 7) del documento del proyecto. Arrastra las tarjetas entre columnas para actualizar el estado.</p>\n' +
+    '  <div id="status"></div>\n</header>\n' +
+    '<div class="board" id="board"></div>\n' +
+    '<footer>Plataforma de Apoyo Académico · Ingeniería de Software · Jaime Mochen y Cristian David Cardeño Gulloso</footer>\n' +
+    '<script id="board-state" type="application/json">\n' + JSON.stringify(s, null, 2) + '\n<\/script>\n' +
+    '<script id="board-logic" type="text/plain">' + logicText + '<\/script>\n' +
+    '<script>eval(document.getElementById("board-logic").textContent);<\/script>\n' +
+    '</body>\n</html>';
+}
+
+async function publishState() {
+  statusEl.textContent = 'Guardando...';
+  try {
+    var artifact = await claude.use('artifact');
+    if (!artifact) { statusEl.textContent = 'Vista de solo lectura: el cambio no se guarda.'; return; }
+    await artifact.publish(fullDocument(state));
+    statusEl.textContent = 'Guardado.';
+    setTimeout(function() { statusEl.textContent = ''; }, 1500);
+  } catch (err) {
+    if (err && err.code === 'conflict') {
+      statusEl.textContent = 'Alguien más actualizó el tablero; recarga la página.';
+    } else {
+      statusEl.textContent = 'Vista de solo lectura: el cambio no se guarda.';
+    }
+  }
+}
+
+renderBoard(state);
+</script>
+
+<script>
+eval(document.getElementById('board-logic').textContent);
+</script>
+
+</body>
+</html>
