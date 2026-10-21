@@ -9,8 +9,11 @@ class AsignaturaService {
 
   ApiClient get _client => ApiClient(token: token);
 
-  Future<List<Asignatura>> listar() async {
-    final data = await _client.get(ApiConfig.api('/asignaturas')) as List;
+  /// Por defecto solo trae las asignaturas activas. El administrador puede
+  /// pedir también las desactivadas ([incluirInactivas]).
+  Future<List<Asignatura>> listar({bool incluirInactivas = false}) async {
+    final query = incluirInactivas ? {'incluir_inactivas': 'true'} : null;
+    final data = await _client.get(ApiConfig.api('/asignaturas', query)) as List;
     return data.map((e) => Asignatura.fromJson(e)).toList();
   }
 
@@ -24,6 +27,12 @@ class AsignaturaService {
       'codigo': codigo,
       'semestre': semestre,
     });
+    return Asignatura.fromJson(data);
+  }
+
+  /// RF-13: editar (nombre, codigo, semestre) o desactivar/reactivar (activo).
+  Future<Asignatura> actualizar(int id, Map<String, dynamic> cambios) async {
+    final data = await _client.put(ApiConfig.api('/asignaturas/$id'), cambios);
     return Asignatura.fromJson(data);
   }
 }

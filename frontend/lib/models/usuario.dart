@@ -5,12 +5,14 @@ class Usuario {
   final String nombre;
   final String correo;
   final String rol; // 'estudiante' | 'administrador'
+  final bool activo; // RF-13: el administrador puede desactivar la cuenta
 
   const Usuario({
     required this.id,
     required this.nombre,
     required this.correo,
     required this.rol,
+    this.activo = true,
   });
 
   bool get esAdministrador => rol == 'administrador';
@@ -21,6 +23,7 @@ class Usuario {
       nombre: json['nombre'] as String,
       correo: json['correo'] as String,
       rol: json['rol'] as String,
+      activo: json['activo'] as bool? ?? true,
     );
   }
 }

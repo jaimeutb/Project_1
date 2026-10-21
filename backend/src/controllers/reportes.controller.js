@@ -72,7 +72,15 @@ async function listar(req, res, next) {
   }
 }
 
-/** RF-10: el administrador actualiza el estado de un reporte (pendiente/resuelto/descartado). */
+/**
+ * RF-10: el administrador actualiza el estado de un reporte (pendiente/resuelto/descartado).
+ *
+ * RNF-05: el indicador «En revisión» que ven los estudiantes refleja los reportes
+ * pendientes. Cuando se cierra el último reporte pendiente de un material, este
+ * vuelve a 'publicado' (y si un reporte se reabre, vuelve a 'reportado'). Los
+ * estados que el administrador fija a mano ('en_revision', 'retirado') no se tocan.
+ * La respuesta incluye material_estado para que el administrador vea el resultado.
+ */
 async function actualizarEstado(req, res, next) {
   try {
     const { id } = req.params;
@@ -83,12 +91,39 @@ async function actualizarEstado(req, res, next) {
     }
 
     const resueltoEn = estado === 'pendiente' ? null : new Date();
-    const { rows } = await pool.query(
-      `UPDATE reportes SET estado = $1, resuelto_en = $2 WHERE id = $3 RETURNING *`,
-      [estado, resueltoEn, id]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Reporte no encontrado.' });
-    return res.json(rows[0]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const { rows } = await client.query(
+        `UPDATE reportes SET estado = $1, resuelto_en = $2 WHERE id = $3 RETURNING *`,
+        [estado, resueltoEn, id]
+      );
+      if (!rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Reporte no encontrado.' });
+      }
+
+      await client.query(
+        `UPDATE materiales m SET estado = CASE
+           WHEN EXISTS (SELECT 1 FROM reportes r
+                        WHERE r.material_id = m.id AND r.estado = 'pendiente') THEN 'reportado'
+           ELSE 'publicado' END
+         WHERE m.id = $1 AND m.estado IN ('publicado', 'reportado')`,
+        [rows[0].material_id]
+      );
+      const material = await client.query('SELECT estado FROM materiales WHERE id = $1', [
+        rows[0].material_id,
+      ]);
+
+      await client.query('COMMIT');
+      return res.json({ ...rows[0], material_estado: material.rows[0].estado });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     return next(err);
   }

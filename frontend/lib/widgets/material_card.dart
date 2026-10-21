@@ -13,6 +13,8 @@ class MaterialCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reportado = material.estado != 'publicado';
+    // Solo el administrador recibe material retirado (RF-12).
+    final retirado = material.estado == 'retirado';
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 0),
@@ -34,9 +36,10 @@ class MaterialCard extends StatelessWidget {
                       ),
                     ),
                     if (reportado)
-                      const Chip(
-                        label: Text('En revisión'),
-                        backgroundColor: Color(0xFFFDF3D6),
+                      Chip(
+                        label: Text(retirado ? 'Retirado' : 'En revisión'),
+                        backgroundColor:
+                            retirado ? const Color(0xFFECECEC) : const Color(0xFFFDF3D6),
                         visualDensity: VisualDensity.compact,
                       ),
                   ],

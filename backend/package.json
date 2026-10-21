@@ -4,10 +4,16 @@
   "description": "API REST de la Plataforma de Apoyo Académico (proyecto de aula - Ingeniería de Software)",
   "main": "src/server.js",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "migrate": "node src/db/migrate.js"
+    "migrate": "node src/db/migrate.js",
+    "crear-admin": "node src/db/crear-admin.js",
+    "test": "node --test test/api.test.js",
+    "test:e2e": "node --test --test-concurrency=1 test/e2e.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

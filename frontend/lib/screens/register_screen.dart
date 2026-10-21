@@ -40,8 +40,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
       await context.read<Session>().iniciar(resultado.usuario, resultado.token);
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
+      // Se reemplaza toda la pila (inicio de sesión + registro) por la pantalla
+      // principal, para que no quede una flecha "atrás" hacia el login.
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (_) => false,
       );
     } on ApiException catch (e) {
       setState(() => _error = e.mensaje);

@@ -6,6 +6,8 @@ const router = Router();
 
 // RF-13: gestión de usuarios (solo administrador).
 router.get('/', requiereAutenticacion, requiereRol('administrador'), ctrl.listar);
+router.post('/', requiereAutenticacion, requiereRol('administrador'), ctrl.crear);
+router.put('/:id', requiereAutenticacion, requiereRol('administrador'), ctrl.actualizar);
 router.patch('/:id/rol', requiereAutenticacion, requiereRol('administrador'), ctrl.actualizarRol);
 
 module.exports = router;

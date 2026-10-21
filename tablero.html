@@ -72,6 +72,8 @@ header p { color: var(--text-muted); font-size: 0.86rem; margin: 0; }
 :root[data-theme="dark"] .prio-media { background: #4a3c1c; color: #ffcf6b; }
 :root[data-theme="dark"] .prio-baja { background: #1f3b26; color: #7fd18c; }
 :root[data-theme="dark"] .prio-confirmar { background: #362a52; color: #c4b0f5; }
+.moscow { margin-left: 4px; font-size: 0.68rem; color: var(--text-muted); }
+.card .nota { margin-top: 6px; font-size: 0.74rem; color: var(--text-muted); line-height: 1.35; }
 .column.dragover { outline: 2px dashed var(--accent); outline-offset: -4px; }
 footer { max-width: 1200px; margin: 16px auto 0; font-size: 0.76rem; color: var(--text-muted); }
 </style>
@@ -79,7 +81,7 @@ footer { max-width: 1200px; margin: 16px auto 0; font-size: 0.76rem; color: var(
 <body>
 <header>
   <h1>🗂️ Plataforma de Apoyo Académico — Tablero de gestión</h1>
-  <p>Backlog inicial construido a partir de los requerimientos (sección 6) y la priorización MoSCoW (sección 7) del documento del proyecto. Arrastra las tarjetas entre columnas para actualizar el estado.</p>
+  <p>Backlog construido a partir de los requerimientos (sección 6, con su prioridad) y la clasificación MoSCoW (sección 7) del documento del proyecto. Las tarjetas en «En revisión» ya están implementadas y tienen pruebas automáticas: pásalas a «Hecho» cuando el equipo verifique su criterio de aceptación en la aplicación. Arrastra las tarjetas entre columnas para actualizar el estado.</p>
   <div id="status"></div>
 </header>
 <div class="board" id="board"></div>
@@ -87,23 +89,26 @@ footer { max-width: 1200px; margin: 16px auto 0; font-size: 0.76rem; color: var(
 
 <script id="board-state" type="application/json">
 [
-  {"id":"rf01","code":"RF-01","name":"Registro de usuario","priority":"alta","column":"progress"},
-  {"id":"rf02","code":"RF-02","name":"Inicio y cierre de sesión","priority":"alta","column":"progress"},
-  {"id":"rf03","code":"RF-03","name":"Búsqueda de material por asignatura","priority":"alta","column":"todo"},
-  {"id":"rnf01","code":"RNF-01","name":"Seguridad de credenciales","priority":"alta","column":"todo"},
-  {"id":"rf04","code":"RF-04","name":"Filtro de material por semestre o tema","priority":"media","column":"backlog"},
-  {"id":"rf05","code":"RF-05","name":"Visualización y descarga de material","priority":"alta","column":"backlog"},
-  {"id":"rf06","code":"RF-06","name":"Valoración de materiales","priority":"media","column":"backlog"},
-  {"id":"rf07","code":"RF-07","name":"Gestión de material por el administrador","priority":"alta","column":"backlog"},
-  {"id":"rf08","code":"RF-08","name":"Gestión de usuarios y asignaturas","priority":"media","column":"backlog"},
-  {"id":"rf09","code":"RF-09","name":"Carga de material por estudiantes (hipótesis)","priority":"confirmar","column":"backlog"},
-  {"id":"rf10","code":"RF-10","name":"Carga anónima de material (hipótesis)","priority":"confirmar","column":"backlog"},
-  {"id":"rf11","code":"RF-11","name":"Reporte de contenido incorrecto (hipótesis)","priority":"confirmar","column":"backlog"},
-  {"id":"rnf02","code":"RNF-02","name":"Disponibilidad","priority":"media","column":"backlog"},
-  {"id":"rnf03","code":"RNF-03","name":"Escalabilidad","priority":"baja","column":"backlog"},
-  {"id":"rnf04","code":"RNF-04","name":"Usabilidad (hipótesis)","priority":"confirmar","column":"backlog"},
-  {"id":"rnf05","code":"RNF-05","name":"Rendimiento (hipótesis)","priority":"confirmar","column":"backlog"},
-  {"id":"rnf06","code":"RNF-06","name":"Compatibilidad (hipótesis)","priority":"confirmar","column":"backlog"}
+  {"id":"rf01","code":"RF-01","name":"Registro de usuario","priority":"alta","moscow":"Obligatorio","column":"done","nota":"API y pantalla de registro. Probado contra PostgreSQL (npm run test:e2e)."},
+  {"id":"rf02","code":"RF-02","name":"Inicio y cierre de sesión","priority":"alta","moscow":"Obligatorio","column":"done","nota":"Login con JWT, cierre de sesión y sesión recordada al recargar."},
+  {"id":"rf03","code":"RF-03","name":"Búsqueda de material por asignatura","priority":"alta","moscow":"Obligatorio","column":"done","nota":"Buscador por asignatura en la pantalla principal."},
+  {"id":"rf04","code":"RF-04","name":"Filtro de material por semestre o tema","priority":"media","moscow":"Importante","column":"done","nota":"Filtros por semestre y por tema (texto libre)."},
+  {"id":"rf05","code":"RF-05","name":"Visualización y descarga de material","priority":"alta","moscow":"Obligatorio","column":"done","nota":"Ficha del material con botón «Descargar»."},
+  {"id":"rf06","code":"RF-06","name":"Carga de material por estudiantes","priority":"media","moscow":"Importante","column":"done","nota":"Botón «Subir material» (PDF, imagen, Word o ZIP; máx. 25 MB)."},
+  {"id":"rf07","code":"RF-07","name":"Carga anónima de material","priority":"alta","moscow":"Importante","column":"done","nota":"Opción «Subir de forma anónima»: el autor no se muestra a otros."},
+  {"id":"rf08","code":"RF-08","name":"Valoración y comentarios de material","priority":"alta","moscow":"Obligatorio","column":"done","nota":"Calificación de 1 a 5 con comentario; promedio visible en la ficha."},
+  {"id":"rf09","code":"RF-09","name":"Reporte de contenido incorrecto o desactualizado","priority":"alta","moscow":"Obligatorio","column":"done","nota":"Botón «Reportar» con motivo; el material queda «En revisión»."},
+  {"id":"rf10","code":"RF-10","name":"Revisión de reportes","priority":"alta","moscow":"Obligatorio","column":"done","nota":"Pantalla «Revisar reportes»: resolver o descartar, con fecha registrada."},
+  {"id":"rf11","code":"RF-11","name":"Metadatos de vigencia del material","priority":"media","moscow":"Importante","column":"done","nota":"Profesor y periodo académico, además de la fecha de publicación."},
+  {"id":"rf12","code":"RF-12","name":"Gestión de material por el administrador","priority":"alta","moscow":"Obligatorio","column":"done","nota":"Pantalla «Gestionar material»: editar datos, cambiar estado y eliminar."},
+  {"id":"rf13","code":"RF-13","name":"Gestión de usuarios y asignaturas","priority":"media","moscow":"Importante","column":"done","nota":"Pantallas «Asignaturas» y «Usuarios»: crear, editar y desactivar."},
+  {"id":"rnf01","code":"RNF-01","name":"Usabilidad en la carga de material","priority":"alta","moscow":"Importante","column":"done","nota":"La carga se hace en 3 pasos (botón, formulario, «Subir»). Validar con usuarios."},
+  {"id":"rnf02","code":"RNF-02","name":"Rendimiento en la búsqueda","priority":"media","moscow":"Deseable","column":"todo","nota":"Falta medir: 95 % de las búsquedas en menos de 3 s con datos reales."},
+  {"id":"rnf03","code":"RNF-03","name":"Compatibilidad móvil","priority":"media","moscow":"Importante","column":"done","nota":"Verificado en la vista móvil de 360 px (Chrome DevTools)."},
+  {"id":"rnf04","code":"RNF-04","name":"Seguridad de la información","priority":"alta","moscow":"Obligatorio","column":"done","nota":"Contraseñas cifradas con bcrypt y funciones de administrador restringidas por rol."},
+  {"id":"rnf05","code":"RNF-05","name":"Confiabilidad y moderación del contenido","priority":"alta","moscow":"Importante","column":"done","nota":"Cada material muestra su calificación promedio y el indicador «En revisión»."},
+  {"id":"rnf06","code":"RNF-06","name":"Disponibilidad del servicio","priority":"media","moscow":"Deseable","column":"backlog","nota":"Requiere desplegar la plataforma en un servidor (aún no hay despliegue)."},
+  {"id":"rnf07","code":"RNF-07","name":"Costo para el usuario final","priority":"alta","moscow":"Obligatorio","column":"done","nota":"Ningún flujo pide pago: registro, búsqueda y descarga son gratuitos."}
 ]
 </script>
 
@@ -136,7 +141,9 @@ function renderBoard(s) {
       cardEl.draggable = true;
       cardEl.dataset.id = c.id;
       cardEl.innerHTML = '<div class="code">' + c.code + '</div><div class="name">' + c.name +
-        '</div><span class="prio prio-' + c.priority + '">' + PRIO_LABEL[c.priority] + '</span>';
+        '</div><span class="prio prio-' + c.priority + '">' + PRIO_LABEL[c.priority] + '</span>' +
+        (c.moscow ? '<span class="moscow">' + c.moscow + '</span>' : '') +
+        (c.nota ? '<div class="nota">' + c.nota + '</div>' : '');
       cardEl.addEventListener('dragstart', function() { cardEl.classList.add('dragging'); });
       cardEl.addEventListener('dragend', function() { cardEl.classList.remove('dragging'); });
       listEl.appendChild(cardEl);
@@ -171,7 +178,7 @@ function fullDocument(s) {
     '<title>Tablero — Plataforma de Apoyo Académico</title>\n' +
     '<style id="page-style">' + styleText + '</style>\n</head>\n<body>\n' +
     '<header>\n  <h1>🗂️ Plataforma de Apoyo Académico — Tablero de gestión</h1>\n' +
-    '  <p>Backlog inicial construido a partir de los requerimientos (sección 6) y la priorización MoSCoW (sección 7) del documento del proyecto. Arrastra las tarjetas entre columnas para actualizar el estado.</p>\n' +
+    '  <p>Backlog construido a partir de los requerimientos (sección 6, con su prioridad) y la clasificación MoSCoW (sección 7) del documento del proyecto. Las tarjetas en «En revisión» ya están implementadas y tienen pruebas automáticas: pásalas a «Hecho» cuando el equipo verifique su criterio de aceptación en la aplicación. Arrastra las tarjetas entre columnas para actualizar el estado.</p>\n' +
     '  <div id="status"></div>\n</header>\n' +
     '<div class="board" id="board"></div>\n' +
     '<footer>Plataforma de Apoyo Académico · Ingeniería de Software · Jaime Mochen y Cristian David Cardeño Gulloso</footer>\n' +

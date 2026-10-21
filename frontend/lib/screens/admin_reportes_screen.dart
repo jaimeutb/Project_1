@@ -43,8 +43,14 @@ class _AdminReportesScreenState extends State<AdminReportesScreen> {
 
   Future<void> _actualizarEstado(Reporte r, String estado) async {
     try {
-      await ReporteService(_token).actualizarEstado(r.id, estado);
+      final estadoMaterial = await ReporteService(_token).actualizarEstado(r.id, estado);
       _cargar();
+      if (!mounted) return;
+      final accion = estado == 'resuelto' ? 'Reporte resuelto.' : 'Reporte descartado.';
+      final resultado = estadoMaterial == 'publicado'
+          ? ' "${r.materialTitulo}" vuelve a estar publicado.'
+          : ' Estado de "${r.materialTitulo}": $estadoMaterial.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(accion + resultado)));
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.mensaje)));
@@ -60,22 +66,29 @@ class _AdminReportesScreenState extends State<AdminReportesScreen> {
           preferredSize: const Size.fromHeight(48),
           child: Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (final estado in ['pendiente', 'resuelto', 'descartado'])
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: ChoiceChip(
-                      label: Text(estado),
-                      selected: _filtro == estado,
-                      onSelected: (_) {
-                        setState(() => _filtro = estado);
-                        _cargar();
-                      },
-                    ),
-                  ),
-              ],
+            // RNF-03: en pantallas angostas los filtros se desplazan horizontalmente.
+            child: Center(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final estado in ['pendiente', 'resuelto', 'descartado'])
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: ChoiceChip(
+                          label: Text(estado),
+                          selected: _filtro == estado,
+                          onSelected: (_) {
+                            setState(() => _filtro = estado);
+                            _cargar();
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

@@ -16,7 +16,10 @@ class ReporteService {
     return data.map((e) => Reporte.fromJson(e)).toList();
   }
 
-  Future<void> actualizarEstado(int id, String estado) async {
-    await _client.patch(ApiConfig.api('/reportes/$id'), {'estado': estado});
+  /// Devuelve el estado en que quedó el material reportado (p. ej. 'publicado'
+  /// si ya no le quedan reportes pendientes).
+  Future<String?> actualizarEstado(int id, String estado) async {
+    final data = await _client.patch(ApiConfig.api('/reportes/$id'), {'estado': estado});
+    return data['material_estado'] as String?;
   }
 }

@@ -51,6 +51,10 @@ async function iniciarSesion(req, res, next) {
     if (!coincide) {
       return res.status(401).json({ error: 'Credenciales inválidas.' });
     }
+    // RF-13: una cuenta desactivada por el administrador no puede iniciar sesión.
+    if (!usuario.activo) {
+      return res.status(403).json({ error: 'Esta cuenta está desactivada.' });
+    }
 
     const token = firmarToken(usuario);
     return res.json({
@@ -71,10 +75,13 @@ async function iniciarSesion(req, res, next) {
 async function perfil(req, res, next) {
   try {
     const { rows } = await pool.query(
-      'SELECT id, nombre, correo, rol, creado_en FROM usuarios WHERE id = $1',
+      'SELECT id, nombre, correo, rol, activo, creado_en FROM usuarios WHERE id = $1',
       [req.usuario.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado.' });
+    // El frontend consulta el perfil al recargar la página: si la cuenta fue
+    // desactivada, la sesión guardada deja de ser válida.
+    if (!rows[0].activo) return res.status(403).json({ error: 'Esta cuenta está desactivada.' });
     return res.json(rows[0]);
   } catch (err) {
     return next(err);

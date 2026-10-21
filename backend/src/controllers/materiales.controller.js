@@ -1,4 +1,7 @@
+const fs = require('fs');
+const path = require('path');
 const { pool } = require('../config/db');
+const { uploadsDir } = require('../middleware/upload');
 
 // Selecciona los campos de material y calcula la calificación promedio (RF-08)
 // y la cantidad de reportes pendientes (RNF-05: confiabilidad visible).
@@ -47,8 +50,11 @@ async function listar(req, res, next) {
     if (estado) {
       valores.push(estado);
       condiciones.push(`m.estado = $${valores.length}`);
-    } else {
-      // Por defecto solo se muestra material publicado a los estudiantes.
+    }
+    // El material retirado solo lo ve el administrador (RF-12), para poder
+    // revisarlo o volver a publicarlo. El reportado/en revisión sí se muestra a
+    // los estudiantes, con su indicador (RNF-05).
+    if (req.usuario.rol !== 'administrador') {
       condiciones.push(`m.estado != 'retirado'`);
     }
 
@@ -68,8 +74,11 @@ async function obtener(req, res, next) {
   try {
     const { id } = req.params;
     const { rows } = await pool.query(`${SELECT_MATERIAL} WHERE m.id = $1 ${GROUP_BY}`, [id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Material no encontrado.' });
-    return res.json(rows[0]);
+    const material = rows[0];
+    if (!material || (material.estado === 'retirado' && req.usuario.rol !== 'administrador')) {
+      return res.status(404).json({ error: 'Material no encontrado.' });
+    }
+    return res.json(material);
   } catch (err) {
     return next(err);
   }
@@ -81,14 +90,25 @@ async function obtener(req, res, next) {
  * (req.file) y se guarda en UPLOADS_DIR; aquí solo se registra su ruta pública.
  */
 async function crear(req, res, next) {
+  // multer ya guardó el archivo en disco: si la carga se rechaza, se elimina
+  // para no dejar archivos huérfanos en UPLOADS_DIR.
+  const rechazar = (status, error) => {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(status).json({ error });
+  };
+
   try {
     const { titulo, descripcion, asignatura_id, profesor, periodo_academico, es_anonimo } = req.body;
 
     if (!titulo || !asignatura_id) {
-      return res.status(400).json({ error: 'titulo y asignatura_id son obligatorios.' });
+      return rechazar(400, 'titulo y asignatura_id son obligatorios.');
     }
     if (!req.file) {
-      return res.status(400).json({ error: 'Debe adjuntar un archivo (campo "archivo").' });
+      return rechazar(400, 'Debe adjuntar un archivo (campo "archivo").');
+    }
+    const asignatura = await pool.query('SELECT activo FROM asignaturas WHERE id = $1', [asignatura_id]);
+    if (!asignatura.rows[0] || !asignatura.rows[0].activo) {
+      return rechazar(400, 'La asignatura no existe o está desactivada.');
     }
 
     const archivoUrl = `/uploads/${req.file.filename}`;
@@ -105,6 +125,7 @@ async function crear(req, res, next) {
     );
     return res.status(201).json(rows[0]);
   } catch (err) {
+    if (req.file) fs.unlink(req.file.path, () => {});
     return next(err);
   }
 }
@@ -114,13 +135,18 @@ async function actualizar(req, res, next) {
   try {
     const { id } = req.params;
     const { titulo, descripcion, profesor, periodo_academico, estado } = req.body;
+    if (titulo !== undefined && !String(titulo).trim()) {
+      return res.status(400).json({ error: 'titulo no puede quedar vacío.' });
+    }
 
+    // Los campos no enviados se conservan; un campo opcional enviado vacío ("")
+    // se borra (NULL), p. ej. cuando el administrador quita el profesor.
     const { rows } = await pool.query(
       `UPDATE materiales SET
          titulo = COALESCE($1, titulo),
-         descripcion = COALESCE($2, descripcion),
-         profesor = COALESCE($3, profesor),
-         periodo_academico = COALESCE($4, periodo_academico),
+         descripcion = CASE WHEN $2::text IS NULL THEN descripcion ELSE NULLIF($2, '') END,
+         profesor = CASE WHEN $3::text IS NULL THEN profesor ELSE NULLIF($3, '') END,
+         periodo_academico = CASE WHEN $4::text IS NULL THEN periodo_academico ELSE NULLIF($4, '') END,
          estado = COALESCE($5, estado)
        WHERE id = $6
        RETURNING *`,
@@ -137,8 +163,12 @@ async function actualizar(req, res, next) {
 async function eliminar(req, res, next) {
   try {
     const { id } = req.params;
-    const { rowCount } = await pool.query('DELETE FROM materiales WHERE id = $1', [id]);
-    if (!rowCount) return res.status(404).json({ error: 'Material no encontrado.' });
+    const { rows } = await pool.query(
+      'DELETE FROM materiales WHERE id = $1 RETURNING archivo_url', [id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Material no encontrado.' });
+    // También se borra el archivo físico ("/uploads/<nombre>").
+    fs.unlink(path.join(uploadsDir, path.basename(rows[0].archivo_url)), () => {});
     return res.status(204).send();
   } catch (err) {
     return next(err);

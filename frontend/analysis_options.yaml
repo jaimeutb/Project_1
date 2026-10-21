@@ -1,0 +1,3 @@
+# Reglas del analizador estático de Dart (`flutter analyze`).
+# Se usan las recomendaciones oficiales de Flutter (paquete flutter_lints).
+include: package:flutter_lints/flutter.yaml

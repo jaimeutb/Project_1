@@ -1,0 +1,26 @@
+# ---------------------------------------------------------------- backend (Node.js)
+backend/node_modules/
+backend/.env
+# Archivos que suben los usuarios (se generan al usar la plataforma)
+backend/uploads/
+backend/uploads-test/
+npm-debug.log*
+
+# ---------------------------------------------------------------- frontend (Flutter)
+# pubspec.lock SÍ se versiona: fija las versiones de los paquetes de la app.
+frontend/.dart_tool/
+frontend/build/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.pub-cache/
+frontend/.pub/
+frontend/*.iml
+
+# ---------------------------------------------------------------- editores / sistema
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+# Archivos temporales de Word cuando el documento está abierto
+docs/~$*

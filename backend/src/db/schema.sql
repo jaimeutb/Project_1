@@ -3,8 +3,10 @@
 -- Incluye los ajustes descritos en la sección 8 del "Avance de proyecto de aula":
 --   - Material: profesor, periodo_academico, es_anonimo, estado
 --   - Nueva tabla: reportes
-
-CREATE EXTENSION IF NOT EXISTS pgcrypto; -- para gen_random_uuid(), si se requiere en el futuro
+--   - usuarios.activo y asignaturas.activo (RF-13: el administrador puede desactivarlos)
+--
+-- El script es idempotente: puede ejecutarse de nuevo (npm run migrate) sobre una base
+-- ya creada, y solo agrega lo que falte.
 
 -- ---------------------------------------------------------------- usuarios
 -- Representa la superclase Usuario; el rol determina si es Estudiante o Administrador.
@@ -15,8 +17,11 @@ CREATE TABLE IF NOT EXISTS usuarios (
     contrasena_hash VARCHAR(255)  NOT NULL,
     rol             VARCHAR(20)   NOT NULL DEFAULT 'estudiante'
                         CHECK (rol IN ('estudiante', 'administrador')),
+    activo          BOOLEAN       NOT NULL DEFAULT true,
     creado_en       TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
+-- Para bases creadas con una versión anterior de este esquema.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT true;
 
 -- ---------------------------------------------------------------- asignaturas
 CREATE TABLE IF NOT EXISTS asignaturas (
@@ -24,8 +29,10 @@ CREATE TABLE IF NOT EXISTS asignaturas (
     nombre      VARCHAR(150) NOT NULL,
     codigo      VARCHAR(30)  NOT NULL UNIQUE,
     semestre    VARCHAR(30)  NOT NULL,
+    activo      BOOLEAN      NOT NULL DEFAULT true,
     creado_en   TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
+ALTER TABLE asignaturas ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT true;
 
 -- ---------------------------------------------------------------- materiales
 -- RF-06/RF-07: carga (anónima o no); RF-11: metadatos de vigencia (profesor, periodo);

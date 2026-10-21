@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart' show launchUrl;
 
 import '../config/api_config.dart';
-import '../models/material.dart';
+import '../models/material.dart' as modelo;
 import '../models/valoracion.dart';
 import '../services/api_client.dart';
 import '../services/material_service.dart';
@@ -20,7 +20,7 @@ class MaterialDetailScreen extends StatefulWidget {
 }
 
 class _MaterialDetailScreenState extends State<MaterialDetailScreen> {
-  Material? _material;
+  modelo.Material? _material;
   List<Valoracion> _valoraciones = [];
   bool _cargando = true;
   String? _error;

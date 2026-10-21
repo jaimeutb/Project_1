@@ -20,21 +20,33 @@ const storage = multer.diskStorage({
   },
 });
 
-const TIPOS_PERMITIDOS = new Set([
-  'application/pdf',
-  'image/png',
-  'image/jpeg',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/msword',
-  'application/zip',
-]);
+// Tipos permitidos por extensión. Se valida la extensión porque no todos los
+// clientes envían el tipo MIME real: el paquete http de Flutter manda
+// "application/octet-stream" cuando no se indica otro.
+const TIPOS_PERMITIDOS = {
+  '.pdf': ['application/pdf'],
+  '.png': ['image/png'],
+  '.jpg': ['image/jpeg'],
+  '.jpeg': ['image/jpeg'],
+  '.docx': ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  '.doc': ['application/msword'],
+  '.zip': ['application/zip', 'application/x-zip-compressed'],
+};
+const TIPO_GENERICO = 'application/octet-stream';
 
 const upload = multer({
   storage,
   limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB
   fileFilter: (req, file, cb) => {
-    if (TIPOS_PERMITIDOS.has(file.mimetype)) return cb(null, true);
-    return cb(new Error('Tipo de archivo no permitido.'));
+    const tipos = TIPOS_PERMITIDOS[path.extname(file.originalname).toLowerCase()];
+    // La extensión debe estar permitida, y el tipo declarado debe coincidir con
+    // ella o ser el genérico.
+    if (tipos && (tipos.includes(file.mimetype) || file.mimetype === TIPO_GENERICO)) {
+      return cb(null, true);
+    }
+    const err = new Error('Tipo de archivo no permitido (PDF, imagen, Word o ZIP).');
+    err.status = 400;
+    return cb(err);
   },
 });
 

@@ -3,19 +3,22 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/asignatura.dart';
-import '../models/material.dart';
+import '../models/material.dart' as modelo;
 import '../services/api_client.dart';
 import '../services/asignatura_service.dart';
 import '../services/material_service.dart';
 import '../state/session.dart';
 import '../widgets/material_card.dart';
+import 'admin_asignaturas_screen.dart';
 import 'admin_materiales_screen.dart';
 import 'admin_reportes_screen.dart';
+import 'admin_usuarios_screen.dart';
 import 'login_screen.dart';
 import 'material_detail_screen.dart';
 
 /// Pantalla principal: búsqueda y filtro de material (RF-03/RF-04) y acceso
-/// a subir material propio (RF-06/RF-07).
+/// a subir material propio (RF-06/RF-07). Para el administrador, da acceso a
+/// la gestión de material, reportes, asignaturas y usuarios (RF-10/12/13).
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -26,8 +29,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _textoCtrl = TextEditingController();
   List<Asignatura> _asignaturas = [];
+  String? _semestreSeleccionado;
   Asignatura? _asignaturaSeleccionada;
-  List<Material> _materiales = [];
+  List<modelo.Material> _materiales = [];
   bool _cargando = true;
   String? _error;
 
@@ -39,10 +43,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String? get _token => context.read<Session>().token;
 
+  /// Semestres disponibles para el filtro RF-04, tomados de las asignaturas.
+  List<String> get _semestres {
+    final semestres = _asignaturas.map((a) => a.semestre).toSet().toList();
+    semestres.sort((a, b) => (int.tryParse(a) ?? 999).compareTo(int.tryParse(b) ?? 999));
+    return semestres;
+  }
+
+  /// Si hay un semestre elegido, solo se ofrecen sus asignaturas.
+  List<Asignatura> get _asignaturasFiltradas => _semestreSeleccionado == null
+      ? _asignaturas
+      : _asignaturas.where((a) => a.semestre == _semestreSeleccionado).toList();
+
   Future<void> _cargarAsignaturas() async {
     try {
       final asignaturas = await AsignaturaService(_token).listar();
-      setState(() => _asignaturas = asignaturas);
+      setState(() {
+        _asignaturas = asignaturas;
+        // Por si el administrador desactivó la asignatura o el semestre elegido.
+        if (!asignaturas.contains(_asignaturaSeleccionada)) _asignaturaSeleccionada = null;
+        if (!_semestres.contains(_semestreSeleccionado)) _semestreSeleccionado = null;
+      });
     } on ApiException catch (e) {
       setState(() => _error = e.mensaje);
     } finally {
@@ -58,17 +79,18 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final resultados = await MaterialService(_token).buscar(
         asignaturaId: _asignaturaSeleccionada?.id,
+        semestre: _semestreSeleccionado,
         texto: _textoCtrl.text.trim(),
       );
       setState(() => _materiales = resultados);
     } on ApiException catch (e) {
       setState(() => _error = e.mensaje);
     } finally {
-      setState(() => _cargando = false);
+      if (mounted) setState(() => _cargando = false);
     }
   }
 
-  Future<void> _abrirDetalle(Material material) async {
+  Future<void> _abrirDetalle(modelo.Material material) async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => MaterialDetailScreen(materialId: material.id)),
     );
@@ -76,7 +98,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _subirMaterial() async {
-    if (_asignaturas.isEmpty) return;
+    if (_asignaturas.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Aún no hay asignaturas: el administrador debe crearlas primero.'),
+      ));
+      return;
+    }
     final resultado = await showDialog<bool>(
       context: context,
       builder: (_) => _DialogoSubirMaterial(asignaturas: _asignaturas, token: _token),
@@ -84,30 +111,125 @@ class _HomeScreenState extends State<HomeScreen> {
     if (resultado == true) _buscar();
   }
 
+  /// Abre una pantalla de administración y, al volver, recarga asignaturas y
+  /// material por si cambiaron.
+  Future<void> _abrirAdministracion(Widget pantalla) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => pantalla));
+    if (mounted) _cargarAsignaturas();
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = context.watch<Session>();
+
+    final buscador = TextField(
+      controller: _textoCtrl,
+      decoration: InputDecoration(
+        prefixIcon: const Icon(Icons.search),
+        hintText: 'Buscar por título o tema…',
+        border: const OutlineInputBorder(),
+        isDense: true,
+        suffixIcon: IconButton(
+          tooltip: 'Buscar',
+          icon: const Icon(Icons.arrow_forward),
+          onPressed: _buscar,
+        ),
+      ),
+      onSubmitted: (_) => _buscar(),
+    );
+
+    final filtroSemestre = DropdownButtonFormField<String?>(
+      value: _semestreSeleccionado,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Semestre',
+        border: OutlineInputBorder(),
+        isDense: true,
+      ),
+      items: [
+        const DropdownMenuItem(value: null, child: Text('Todos')),
+        ..._semestres.map((s) => DropdownMenuItem(value: s, child: Text(s))),
+      ],
+      onChanged: (v) {
+        setState(() {
+          _semestreSeleccionado = v;
+          if (v != null && _asignaturaSeleccionada?.semestre != v) {
+            _asignaturaSeleccionada = null;
+          }
+        });
+        _buscar();
+      },
+    );
+
+    final filtroAsignatura = DropdownButtonFormField<Asignatura?>(
+      value: _asignaturaSeleccionada,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Asignatura',
+        border: OutlineInputBorder(),
+        isDense: true,
+      ),
+      items: [
+        const DropdownMenuItem(value: null, child: Text('Todas')),
+        ..._asignaturasFiltradas.map(
+          (a) => DropdownMenuItem(
+            value: a,
+            child: Text(a.toString(), overflow: TextOverflow.ellipsis),
+          ),
+        ),
+      ],
+      onChanged: (v) {
+        setState(() => _asignaturaSeleccionada = v);
+        _buscar();
+      },
+    );
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Plataforma de Apoyo Académico'),
         actions: [
-          if (session.esAdministrador) ...[
-            IconButton(
-              tooltip: 'Gestionar material',
-              icon: const Icon(Icons.folder_open),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AdminMaterialesScreen()),
-              ),
+          if (session.esAdministrador)
+            PopupMenuButton<Widget>(
+              tooltip: 'Administración',
+              onSelected: _abrirAdministracion,
+              // En pantallas anchas el menú muestra su nombre para que se encuentre
+              // fácilmente; en el celular queda solo el ícono para ahorrar espacio.
+              child: MediaQuery.sizeOf(context).width >= 600
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.admin_panel_settings_outlined),
+                          SizedBox(width: 6),
+                          Text('Administración'),
+                          Icon(Icons.arrow_drop_down),
+                        ],
+                      ),
+                    )
+                  : const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(Icons.admin_panel_settings_outlined),
+                    ),
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: AdminMaterialesScreen(),
+                  child: ListTile(leading: Icon(Icons.folder_open), title: Text('Gestionar material')),
+                ),
+                PopupMenuItem(
+                  value: AdminReportesScreen(),
+                  child: ListTile(leading: Icon(Icons.flag_outlined), title: Text('Revisar reportes')),
+                ),
+                PopupMenuItem(
+                  value: AdminAsignaturasScreen(),
+                  child: ListTile(leading: Icon(Icons.menu_book_outlined), title: Text('Asignaturas')),
+                ),
+                PopupMenuItem(
+                  value: AdminUsuariosScreen(),
+                  child: ListTile(leading: Icon(Icons.group_outlined), title: Text('Usuarios')),
+                ),
+              ],
             ),
-            IconButton(
-              tooltip: 'Revisar reportes',
-              icon: const Icon(Icons.flag_outlined),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AdminReportesScreen()),
-              ),
-            ),
-          ],
           IconButton(
             tooltip: 'Cerrar sesión',
             icon: const Icon(Icons.logout),
@@ -130,45 +252,31 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    controller: _textoCtrl,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Buscar por título o tema…',
-                      border: OutlineInputBorder(),
-                      isDense: true,
+            // RNF-03: en pantallas angostas (navegador móvil) los filtros se apilan.
+            child: LayoutBuilder(
+              builder: (context, constraints) => constraints.maxWidth >= 720
+                  ? Row(
+                      children: [
+                        Expanded(flex: 2, child: buscador),
+                        const SizedBox(width: 12),
+                        Expanded(child: filtroSemestre),
+                        const SizedBox(width: 12),
+                        Expanded(flex: 2, child: filtroAsignatura),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        buscador,
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(child: filtroSemestre),
+                            const SizedBox(width: 8),
+                            Expanded(flex: 2, child: filtroAsignatura),
+                          ],
+                        ),
+                      ],
                     ),
-                    onSubmitted: (_) => _buscar(),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<Asignatura?>(
-                    value: _asignaturaSeleccionada,
-                    decoration: const InputDecoration(
-                      labelText: 'Asignatura',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('Todas')),
-                      ..._asignaturas.map(
-                        (a) => DropdownMenuItem(value: a, child: Text(a.toString())),
-                      ),
-                    ],
-                    onChanged: (v) {
-                      setState(() => _asignaturaSeleccionada = v);
-                      _buscar();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                FilledButton(onPressed: _buscar, child: const Text('Buscar')),
-              ],
             ),
           ),
           if (_error != null)
@@ -182,7 +290,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 : _materiales.isEmpty
                     ? const Center(child: Text('No se encontró material con estos criterios.'))
                     : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        // Espacio al final para que el botón flotante no tape la última tarjeta.
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 80),
                         itemCount: _materiales.length,
                         itemBuilder: (context, i) => MaterialCard(
                           material: _materiales[i],
@@ -279,6 +388,7 @@ class _DialogoSubirMaterialState extends State<_DialogoSubirMaterial> {
                   decoration: const InputDecoration(labelText: 'Descripción'),
                 ),
                 DropdownButtonFormField<Asignatura>(
+                  isExpanded: true,
                   value: _asignatura,
                   decoration: const InputDecoration(labelText: 'Asignatura'),
                   items: widget.asignaturas
