@@ -100,6 +100,7 @@ cp .env.example .env        # complete DB_USER, DB_PASSWORD, JWT_SECRET, etc.
 npm install
 npm run migrate             # aplica backend/src/db/schema.sql (se puede repetir sin riesgo)
 npm run crear-admin -- "Nombre Apellido" correo@ejemplo.com "contraseña"
+npm run datos-prueba        # opcional: asignaturas, estudiantes y materiales del informe de pruebas
 npm run dev                 # http://localhost:4000
 ```
 
