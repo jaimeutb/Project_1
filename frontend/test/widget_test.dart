@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:plataforma_apoyo_academico/main.dart';
 import 'package:plataforma_apoyo_academico/models/asignatura.dart';
 import 'package:plataforma_apoyo_academico/models/material.dart' as modelo;
+import 'package:plataforma_apoyo_academico/models/reporte.dart';
 import 'package:plataforma_apoyo_academico/models/usuario.dart';
 import 'package:plataforma_apoyo_academico/screens/admin_asignaturas_screen.dart';
 import 'package:plataforma_apoyo_academico/screens/admin_materiales_screen.dart';
@@ -161,6 +162,23 @@ void main() {
       expect(find.byType(Scaffold), findsOneWidget);
     });
   }
+
+  test('el reporte muestra su fecha en la hora local (RF-09)', () {
+    final r = Reporte.fromJson({
+      'id': 1,
+      'motivo': 'El profesor del quiz es distinto',
+      'estado': 'pendiente',
+      'material_id': 4,
+      'material_titulo': 'Quiz de cinemática',
+      'reportado_por': '001',
+      'creado_en': '2026-10-22T13:48:32.000Z',
+    });
+    final local = DateTime.utc(2026, 10, 22, 13, 48, 32).toLocal();
+    final esperado = '${local.day.toString().padLeft(2, '0')}/'
+        '${local.month.toString().padLeft(2, '0')}/${local.year} '
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    expect(fechaDeReporte(r.creadoEn), esperado);
+  });
 
   test('dos asignaturas con el mismo id son iguales (filtros del buscador)', () {
     const a = Asignatura(id: 1, nombre: 'Cálculo I', codigo: 'MAT101', semestre: '1');
