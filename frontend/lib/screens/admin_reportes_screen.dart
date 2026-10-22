@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../models/reporte.dart';
 import '../services/api_client.dart';
 import '../services/reporte_service.dart';
 import '../state/session.dart';
+
+/// RF-09: fecha del reporte en la hora local del administrador.
+String fechaDeReporte(DateTime creadoEn) =>
+    DateFormat('dd/MM/yyyy HH:mm').format(creadoEn.toLocal());
 
 /// RF-10: el administrador revisa los reportes generados por los estudiantes
 /// (RF-09) y actualiza su estado.
@@ -105,7 +110,8 @@ class _AdminReportesScreenState extends State<AdminReportesScreen> {
                         final r = _reportes[i];
                         return ListTile(
                           title: Text(r.materialTitulo),
-                          subtitle: Text('${r.motivo}\nReportado por: ${r.reportadoPor}'),
+                          subtitle: Text('${r.motivo}\n'
+                              'Reportado por: ${r.reportadoPor} · ${fechaDeReporte(r.creadoEn)}'),
                           isThreeLine: true,
                           trailing: r.estado == 'pendiente'
                               ? Row(
