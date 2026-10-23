@@ -7,6 +7,7 @@ const assert = require('node:assert/strict');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
 const { firmarToken } = require('../src/utils/jwt');
+const { palabrasDeBusqueda } = require('../src/utils/busqueda');
 
 let server;
 let base;
@@ -94,4 +95,15 @@ test('RF-01: el registro exige nombre, correo y contraseña de 8+ caracteres', a
 test('RF-02: el inicio de sesión exige correo y contraseña', async () => {
   const res = await pedir('POST', '/api/auth/login', { body: { correo: 'a@b.co' } });
   assert.equal(res.status, 400);
+});
+
+test('H-01/H-02: el texto buscado se divide en palabras sin tildes ni mayúsculas', () => {
+  assert.deepEqual(palabrasDeBusqueda('  Parcial  Cálculo DIFERENCIAL '), ['parcial', 'calculo', 'diferencial']);
+  assert.deepEqual(palabrasDeBusqueda('cinemática'), ['cinematica']);
+  assert.deepEqual(palabrasDeBusqueda('Diseño y Programación'), ['diseno', 'programacion']);
+  // Las palabras vacías se ignoran, salvo que el texto solo tenga palabras vacías.
+  assert.deepEqual(palabrasDeBusqueda('parcial de cálculo'), ['parcial', 'calculo']);
+  assert.deepEqual(palabrasDeBusqueda('de la'), ['de', 'la']);
+  // Los comodines de LIKE se buscan como texto.
+  assert.deepEqual(palabrasDeBusqueda('100% sql_1'), ['100\\%', 'sql\\_1']);
 });

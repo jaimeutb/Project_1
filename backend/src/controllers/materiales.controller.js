@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { pool } = require('../config/db');
 const { uploadsDir } = require('../middleware/upload');
+const { agregarCondicionesDeTexto } = require('../utils/busqueda');
 
 // Selecciona los campos de material y calcula la calificación promedio (RF-08)
 // y la cantidad de reportes pendientes (RNF-05: confiabilidad visible).
@@ -27,7 +28,8 @@ const GROUP_BY = `
 
 /**
  * RF-03/RF-04: búsqueda de material por asignatura, con filtro opcional por
- * semestre, tema (texto libre en título/descripción) y estado.
+ * semestre, tema (texto libre en título, descripción, nombre o código de la
+ * asignatura; sin distinguir tildes) y estado.
  */
 async function listar(req, res, next) {
   try {
@@ -44,8 +46,7 @@ async function listar(req, res, next) {
       condiciones.push(`a.semestre = $${valores.length}`);
     }
     if (q) {
-      valores.push(`%${q}%`);
-      condiciones.push(`(m.titulo ILIKE $${valores.length} OR m.descripcion ILIKE $${valores.length})`);
+      agregarCondicionesDeTexto(q, condiciones, valores);
     }
     if (estado) {
       valores.push(estado);
