@@ -280,6 +280,30 @@ test('RF-03/RF-04: búsqueda por asignatura y filtro por semestre o tema', async
   assert.equal(todos.body.length, 2);
 });
 
+test('H-01/H-02: el buscador encuentra la asignatura, por palabras y sin tildes', async () => {
+  const buscar = async (q) => {
+    const res = await pedir('GET', `/api/materiales?q=${encodeURIComponent(q)}`, { token: t.ana });
+    assert.equal(res.status, 200, q);
+    return res.body.map((m) => m.id);
+  };
+
+  // H-01: nombre y código de la asignatura, y palabras sueltas en distintos campos.
+  assert.deepEqual(await buscar('física mecánica'), [t.tallerFisica]);
+  assert.deepEqual(await buscar('mat101'), [t.parcialCalculo]);
+  assert.deepEqual(await buscar('parcial cálculo'), [t.parcialCalculo]);
+  assert.deepEqual(await buscar('derivadas del cálculo'), [t.parcialCalculo]);
+  assert.deepEqual(await buscar('parcial física'), [], 'todas las palabras deben aparecer');
+
+  // H-02: sin distinguir tildes ni mayúsculas.
+  assert.deepEqual(await buscar('cinematica'), [t.tallerFisica]);
+  assert.deepEqual(await buscar('CINEMÁTICA'), [t.tallerFisica]);
+  assert.deepEqual(await buscar('calculo'), [t.parcialCalculo]);
+
+  // Los comodines de LIKE no devuelven todo el material.
+  assert.deepEqual(await buscar('%'), []);
+  assert.deepEqual(await buscar('_'), []);
+});
+
 test('RF-05/RF-11: ficha del material y descarga del archivo', async () => {
   const ficha = await pedir('GET', `/api/materiales/${t.parcialCalculo}`, { token: t.beto });
   assert.equal(ficha.status, 200);
