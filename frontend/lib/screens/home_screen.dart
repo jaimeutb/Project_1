@@ -104,11 +104,26 @@ class _HomeScreenState extends State<HomeScreen> {
       ));
       return;
     }
-    final resultado = await showDialog<bool>(
+    final nuevo = await showDialog<modelo.Material>(
       context: context,
-      builder: (_) => _DialogoSubirMaterial(asignaturas: _asignaturas, token: _token),
+      builder: (_) => DialogoSubirMaterial(asignaturas: _asignaturas, token: _token),
     );
-    if (resultado == true) _buscar();
+    if (nuevo == null || !mounted) return;
+
+    // H-04: se confirma la carga y se quitan los filtros para que el material
+    // nuevo aparezca primero en la lista.
+    _textoCtrl.clear();
+    setState(() {
+      _semestreSeleccionado = null;
+      _asignaturaSeleccionada = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(nuevo.esAnonimo
+          ? 'Material publicado de forma anónima.'
+          : 'Material publicado.'),
+      action: SnackBarAction(label: 'Ver', onPressed: () => _abrirDetalle(nuevo)),
+    ));
+    _buscar();
   }
 
   /// Abre una pantalla de administración y, al volver, recarga asignaturas y
@@ -126,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen> {
       controller: _textoCtrl,
       decoration: InputDecoration(
         prefixIcon: const Icon(Icons.search),
-        hintText: 'Buscar por título o tema…',
+        hintText: 'Buscar por título, tema o asignatura…',
         border: const OutlineInputBorder(),
         isDense: true,
         suffixIcon: IconButton(
@@ -138,7 +153,11 @@ class _HomeScreenState extends State<HomeScreen> {
       onSubmitted: (_) => _buscar(),
     );
 
+    // `initialValue` reemplaza a `value` desde Flutter 3.35, pero no existe en
+    // Flutter 3.24, con el que el proyecto también compila; por eso se mantiene
+    // `value` en las listas desplegables.
     final filtroSemestre = DropdownButtonFormField<String?>(
+      // ignore: deprecated_member_use
       value: _semestreSeleccionado,
       isExpanded: true,
       decoration: const InputDecoration(
@@ -162,6 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     final filtroAsignatura = DropdownButtonFormField<Asignatura?>(
+      // ignore: deprecated_member_use
       value: _asignaturaSeleccionada,
       isExpanded: true,
       decoration: const InputDecoration(
@@ -305,17 +325,35 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Formulario de carga de material (RF-06/RF-07/RF-11), usado desde el FAB.
-class _DialogoSubirMaterial extends StatefulWidget {
-  final List<Asignatura> asignaturas;
-  final String? token;
-  const _DialogoSubirMaterial({required this.asignaturas, required this.token});
+/// R-02: tipos y tamaño de archivo que acepta el servidor.
+const extensionesPermitidas = {'pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx', 'zip'};
+const tamanoMaximoArchivo = 25 * 1024 * 1024; // 25 MB
+const textoArchivosPermitidos = 'PDF, imagen (PNG o JPG), Word o ZIP; máx. 25 MB.';
 
-  @override
-  State<_DialogoSubirMaterial> createState() => _DialogoSubirMaterialState();
+/// Revisa el archivo elegido antes de subirlo, para avisar de inmediato (H-06).
+/// Devuelve el mensaje de error, o null si el archivo se puede subir.
+String? validarArchivo(String nombre, int bytes) {
+  final punto = nombre.lastIndexOf('.');
+  final extension = punto < 0 ? '' : nombre.substring(punto + 1).toLowerCase();
+  if (!extensionesPermitidas.contains(extension)) {
+    return 'Tipo de archivo no permitido: use PDF, imagen (PNG o JPG), Word o ZIP.';
+  }
+  if (bytes > tamanoMaximoArchivo) return 'El archivo supera el máximo de 25 MB.';
+  return null;
 }
 
-class _DialogoSubirMaterialState extends State<_DialogoSubirMaterial> {
+/// Formulario de carga de material (RF-06/RF-07/RF-11), usado desde el FAB.
+/// Devuelve el material creado, o null si se cancela.
+class DialogoSubirMaterial extends StatefulWidget {
+  final List<Asignatura> asignaturas;
+  final String? token;
+  const DialogoSubirMaterial({super.key, required this.asignaturas, required this.token});
+
+  @override
+  State<DialogoSubirMaterial> createState() => _DialogoSubirMaterialState();
+}
+
+class _DialogoSubirMaterialState extends State<DialogoSubirMaterial> {
   final _formKey = GlobalKey<FormState>();
   final _tituloCtrl = TextEditingController();
   final _descripcionCtrl = TextEditingController();
@@ -329,9 +367,13 @@ class _DialogoSubirMaterialState extends State<_DialogoSubirMaterial> {
 
   Future<void> _elegirArchivo() async {
     final resultado = await FilePicker.platform.pickFiles(withData: true);
-    if (resultado != null && resultado.files.isNotEmpty) {
-      setState(() => _archivo = resultado.files.first);
-    }
+    if (resultado == null || resultado.files.isEmpty) return;
+    final archivo = resultado.files.first;
+    final error = validarArchivo(archivo.name, archivo.size);
+    setState(() {
+      _archivo = error == null ? archivo : null;
+      _error = error;
+    });
   }
 
   Future<void> _enviar() async {
@@ -346,7 +388,7 @@ class _DialogoSubirMaterialState extends State<_DialogoSubirMaterial> {
     });
 
     try {
-      await MaterialService(widget.token).subir(
+      final nuevo = await MaterialService(widget.token).subir(
         titulo: _tituloCtrl.text.trim(),
         descripcion: _descripcionCtrl.text.trim(),
         asignaturaId: _asignatura!.id,
@@ -357,7 +399,7 @@ class _DialogoSubirMaterialState extends State<_DialogoSubirMaterial> {
         nombreArchivo: _archivo!.name,
       );
       if (!mounted) return;
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(nuevo);
     } on ApiException catch (e) {
       setState(() => _error = e.mensaje);
     } finally {
@@ -378,6 +420,15 @@ class _DialogoSubirMaterialState extends State<_DialogoSubirMaterial> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
+                // H-05: el interruptor va primero para que el teclado del celular
+                // no lo tape mientras se completan los campos de texto.
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Subir de forma anónima'),
+                  subtitle: const Text('Su nombre no se mostrará en el material.'),
+                  value: _anonimo,
+                  onChanged: (v) => setState(() => _anonimo = v),
+                ),
                 TextFormField(
                   controller: _tituloCtrl,
                   decoration: const InputDecoration(labelText: 'Título'),
@@ -389,6 +440,7 @@ class _DialogoSubirMaterialState extends State<_DialogoSubirMaterial> {
                 ),
                 DropdownButtonFormField<Asignatura>(
                   isExpanded: true,
+                  // ignore: deprecated_member_use
                   value: _asignatura,
                   decoration: const InputDecoration(labelText: 'Asignatura'),
                   items: widget.asignaturas
@@ -406,16 +458,18 @@ class _DialogoSubirMaterialState extends State<_DialogoSubirMaterial> {
                   decoration:
                       const InputDecoration(labelText: 'Periodo académico (ej. 2026-2)'),
                 ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Subir de forma anónima'),
-                  value: _anonimo,
-                  onChanged: (v) => setState(() => _anonimo = v),
-                ),
+                const SizedBox(height: 12),
                 OutlinedButton.icon(
                   onPressed: _elegirArchivo,
                   icon: const Icon(Icons.attach_file),
                   label: Text(_archivo?.name ?? 'Elegir archivo'),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text(
+                    textoArchivosPermitidos,
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 8),

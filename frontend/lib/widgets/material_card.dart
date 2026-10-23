@@ -37,7 +37,7 @@ class MaterialCard extends StatelessWidget {
                     ),
                     if (reportado)
                       Chip(
-                        label: Text(retirado ? 'Retirado' : 'En revisión'),
+                        label: Text(material.estadoVisible),
                         backgroundColor:
                             retirado ? const Color(0xFFECECEC) : const Color(0xFFFDF3D6),
                         visualDensity: VisualDensity.compact,

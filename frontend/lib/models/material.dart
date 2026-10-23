@@ -61,4 +61,12 @@ class Material {
   String get autorVisible => esAnonimo || autorNombre == null
       ? 'Anónimo'
       : autorNombre!;
+
+  /// Nombre del estado que se muestra en la lista y en la ficha. «reportado» y
+  /// «en_revision» se muestran igual en los dos lugares (H-07).
+  String get estadoVisible => switch (estado) {
+        'publicado' => 'Publicado',
+        'retirado' => 'Retirado',
+        _ => 'En revisión',
+      };
 }
