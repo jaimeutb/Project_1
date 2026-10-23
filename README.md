@@ -143,7 +143,9 @@ temporal que se elimina al terminar, así que no modifica los datos de desarroll
 
 ## Frontend (Flutter Web)
 
-Probado con Flutter 3.24 (Dart 3.5).
+Probado con Flutter 3.24 (Dart 3.5) y 3.47.7 (Dart 3.13). El `pubspec.lock` del
+repositorio corresponde a Flutter 3.47; con Flutter 3.24, `flutter pub get` lo vuelve a
+resolver.
 
 ```bash
 cd frontend

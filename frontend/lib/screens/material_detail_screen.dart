@@ -114,35 +114,14 @@ class _MaterialDetailScreenState extends State<MaterialDetailScreen> {
   }
 
   Future<void> _reportar() async {
-    final motivoCtrl = TextEditingController();
-    final confirmado = await showDialog<bool>(
+    final motivo = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Reportar material'),
-        content: TextField(
-          controller: motivoCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Motivo',
-            hintText: 'Ej. desactualizado, incorrecto, profesor distinto…',
-          ),
-          maxLines: 3,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Reportar'),
-          ),
-        ],
-      ),
+      builder: (_) => const DialogoReportar(),
     );
 
-    if (confirmado != true || motivoCtrl.text.trim().isEmpty) return;
+    if (motivo == null) return;
     try {
-      await _service.reportar(widget.materialId, motivo: motivoCtrl.text.trim());
+      await _service.reportar(widget.materialId, motivo: motivo);
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Reporte enviado. Gracias.')));
@@ -182,7 +161,7 @@ class _MaterialDetailScreenState extends State<MaterialDetailScreen> {
                                 _Info('Profesor', _material!.profesor!),
                               if (_material!.periodoAcademico != null)
                                 _Info('Periodo', _material!.periodoAcademico!),
-                              _Info('Estado', _material!.estado),
+                              _Info('Estado', _material!.estadoVisible),
                               _Info('Calificación',
                                   '${_material!.calificacionPromedio.toStringAsFixed(1)} (${_material!.totalValoraciones})'),
                             ]),
@@ -227,6 +206,56 @@ class _MaterialDetailScreenState extends State<MaterialDetailScreen> {
                         ),
                       ),
                     ),
+    );
+  }
+}
+
+/// Ventana para reportar un material (RF-09). Devuelve el motivo escrito, o null
+/// si se cancela. «Reportar» se activa solo cuando hay un motivo (H-03): antes,
+/// un reporte sin motivo cerraba la ventana sin enviar nada y sin avisar.
+class DialogoReportar extends StatefulWidget {
+  const DialogoReportar({super.key});
+
+  @override
+  State<DialogoReportar> createState() => _DialogoReportarState();
+}
+
+class _DialogoReportarState extends State<DialogoReportar> {
+  final _motivoCtrl = TextEditingController();
+
+  String get _motivo => _motivoCtrl.text.trim();
+
+  @override
+  void dispose() {
+    _motivoCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reportar material'),
+      content: TextField(
+        controller: _motivoCtrl,
+        autofocus: true,
+        decoration: InputDecoration(
+          labelText: 'Motivo',
+          hintText: 'Ej. desactualizado, incorrecto, profesor distinto…',
+          helperText: _motivo.isEmpty ? 'Escriba el motivo para enviar el reporte.' : null,
+        ),
+        maxLines: 3,
+        onChanged: (_) => setState(() {}),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _motivo.isEmpty ? null : () => Navigator.of(context).pop(_motivo),
+          child: const Text('Reportar'),
+        ),
+      ],
     );
   }
 }

@@ -189,6 +189,9 @@ class _DialogoUsuarioState extends State<_DialogoUsuario> {
                       (v == null || v.length < 8) ? 'Mínimo 8 caracteres.' : null,
                 ),
                 DropdownButtonFormField<String>(
+                  // `initialValue` reemplaza a `value` desde Flutter 3.35, pero no
+                  // existe en Flutter 3.24, con el que el proyecto también compila.
+                  // ignore: deprecated_member_use
                   value: _rol,
                   decoration: const InputDecoration(labelText: 'Rol'),
                   items: const [

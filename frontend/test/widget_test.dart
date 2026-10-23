@@ -1,5 +1,11 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,11 +19,16 @@ import 'package:plataforma_apoyo_academico/screens/admin_materiales_screen.dart'
 import 'package:plataforma_apoyo_academico/screens/admin_reportes_screen.dart';
 import 'package:plataforma_apoyo_academico/screens/admin_usuarios_screen.dart';
 import 'package:plataforma_apoyo_academico/screens/home_screen.dart';
+import 'package:plataforma_apoyo_academico/screens/material_detail_screen.dart';
 import 'package:plataforma_apoyo_academico/state/session.dart';
 import 'package:plataforma_apoyo_academico/widgets/material_card.dart';
 
 modelo.Material _material({required String estado, bool anonimo = false}) {
-  return modelo.Material.fromJson({
+  return modelo.Material.fromJson(_materialJson(estado: estado, anonimo: anonimo));
+}
+
+Map<String, dynamic> _materialJson({required String estado, bool anonimo = false}) {
+  return {
     'id': 1,
     'titulo': 'Parcial 1 de Cálculo',
     'descripcion': null,
@@ -33,10 +44,39 @@ modelo.Material _material({required String estado, bool anonimo = false}) {
     'calificacion_promedio': '4.50',
     'total_valoraciones': '2',
     'reportes_pendientes': '0',
-  });
+  };
 }
 
 Widget _envolver(Widget hijo) => MaterialApp(home: Scaffold(body: hijo));
+
+http.Response _json(Object cuerpo, [int estado = 200]) => http.Response(
+      jsonEncode(cuerpo),
+      estado,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+
+/// Selector de archivos que devuelve siempre el mismo PDF, sin abrir el diálogo
+/// del sistema.
+class _SelectorDeArchivoFalso extends FilePicker {
+  @override
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = true,
+    int compressionQuality = 30,
+    bool allowMultiple = false,
+    bool withData = false,
+    bool withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) async {
+    final bytes = Uint8List.fromList(utf8.encode('%PDF-1.4 prueba'));
+    return FilePickerResult([PlatformFile(name: 'quiz.pdf', size: bytes.length, bytes: bytes)]);
+  }
+}
 
 void main() {
   testWidgets('sin sesión guardada, la app muestra el inicio de sesión (RF-02)',
@@ -86,6 +126,149 @@ void main() {
       MaterialCard(material: _material(estado: 'retirado'), onTap: () {}),
     ));
     expect(find.text('Retirado'), findsOneWidget);
+  });
+
+  test('«reportado» y «en_revision» se llaman igual en la lista y en la ficha (H-07)', () {
+    expect(_material(estado: 'publicado').estadoVisible, 'Publicado');
+    expect(_material(estado: 'reportado').estadoVisible, 'En revisión');
+    expect(_material(estado: 'en_revision').estadoVisible, 'En revisión');
+    expect(_material(estado: 'retirado').estadoVisible, 'Retirado');
+  });
+
+  testWidgets('«Reportar» se activa solo con un motivo y lo envía sin espacios (H-03)',
+      (tester) async {
+    String? motivo = 'sin respuesta';
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => TextButton(
+          onPressed: () async {
+            motivo = await showDialog<String>(
+                context: context, builder: (_) => const DialogoReportar());
+          },
+          child: const Text('abrir'),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('abrir'));
+    await tester.pumpAndSettle();
+
+    FilledButton boton() =>
+        tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Reportar'));
+    expect(boton().onPressed, isNull);
+    expect(find.text('Escriba el motivo para enviar el reporte.'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '   ');
+    await tester.pump();
+    expect(boton().onPressed, isNull);
+
+    await tester.enterText(find.byType(TextField), '  El profesor es distinto ');
+    await tester.pump();
+    expect(boton().onPressed, isNotNull);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Reportar'));
+    await tester.pumpAndSettle();
+    expect(motivo, 'El profesor es distinto');
+  });
+
+  testWidgets('el formulario de carga muestra primero el interruptor anónimo y los '
+      'archivos permitidos (H-05/H-06)', (tester) async {
+    tester.view.physicalSize = const Size(360 * 3, 740 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_envolver(const DialogoSubirMaterial(
+      asignaturas: [Asignatura(id: 1, nombre: 'Cálculo I', codigo: 'MAT101', semestre: '1')],
+      token: null,
+    )));
+
+    final interruptor = tester.getTopLeft(find.text('Subir de forma anónima'));
+    final titulo = tester.getTopLeft(find.widgetWithText(TextFormField, 'Título'));
+    expect(interruptor.dy, lessThan(titulo.dy));
+    expect(find.text(textoArchivosPermitidos), findsOneWidget);
+  });
+
+  test('el archivo se revisa antes de subirlo (H-06, regla R-02)', () {
+    expect(validarArchivo('parcial.PDF', 1024), isNull);
+    expect(validarArchivo('foto.jpeg', tamanoMaximoArchivo), isNull);
+    expect(validarArchivo('programa.exe', 1024), contains('no permitido'));
+    expect(validarArchivo('sin-extension', 1024), contains('no permitido'));
+    expect(validarArchivo('apuntes.zip', tamanoMaximoArchivo + 1), contains('25 MB'));
+  });
+
+  testWidgets('al subir material se confirma la carga y se quitan los filtros (H-04)',
+      (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final busquedas = <Map<String, String>>[];
+    final api = MockClient((request) async {
+      final ruta = request.url.path;
+      if (request.method == 'GET' && ruta == '/api/asignaturas') {
+        return _json([
+          {'id': 3, 'nombre': 'Cálculo I', 'codigo': 'MAT101', 'semestre': '1', 'activo': true},
+        ]);
+      }
+      if (request.method == 'GET' && ruta == '/api/materiales') {
+        busquedas.add(request.url.queryParameters);
+        return _json([_materialJson(estado: 'publicado')]);
+      }
+      if (request.method == 'POST' && ruta == '/api/materiales') {
+        return _json({..._materialJson(estado: 'publicado', anonimo: true), 'id': 2}, 201);
+      }
+      return _json({'error': 'Ruta no esperada: ${request.method} $ruta'}, 404);
+    });
+    FilePicker.platform = _SelectorDeArchivoFalso();
+
+    await http.runWithClient(() async {
+      SharedPreferences.setMockInitialValues({});
+      final session = Session();
+      await session.iniciar(
+        const Usuario(id: 5, nombre: '001', correo: 'estudiante@prueba.com', rol: 'estudiante'),
+        'token-de-prueba',
+      );
+      await tester.pumpWidget(ChangeNotifierProvider.value(
+        value: session,
+        child: const MaterialApp(home: HomeScreen()),
+      ));
+      await tester.pumpAndSettle();
+
+      // El estudiante tenía un texto buscado antes de subir el material.
+      await tester.enterText(find.byType(TextField).first, 'parcial');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(busquedas.last['q'], 'parcial');
+
+      await tester.tap(find.byType(FloatingActionButton));
+      await tester.pumpAndSettle();
+      final dialogo = find.byType(DialogoSubirMaterial);
+      await tester.tap(find.descendant(of: dialogo, matching: find.byType(Switch)));
+      await tester.enterText(
+          find.descendant(of: dialogo, matching: find.widgetWithText(TextFormField, 'Título')),
+          'Quiz 2 de límites');
+      await tester.tap(find.descendant(
+          of: dialogo, matching: find.byType(DropdownButtonFormField<Asignatura>)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cálculo I (MAT101 · 1)').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Elegir archivo'));
+      await tester.pumpAndSettle();
+      expect(find.text('quiz.pdf'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Subir'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DialogoSubirMaterial), findsNothing);
+      expect(find.text('Material publicado de forma anónima.'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, 'Ver'), findsOneWidget);
+      // La lista se vuelve a cargar sin filtros, con el material nuevo primero.
+      expect(busquedas.last, isEmpty);
+      expect(find.text('parcial'), findsNothing);
+
+      // Se deja que el aviso se cierre para no dejar temporizadores pendientes.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+    }, () => api);
   });
 
   // En las pruebas de Flutter las peticiones HTTP reales se bloquean (responden
