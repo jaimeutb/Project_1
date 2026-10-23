@@ -27,9 +27,10 @@ verificó a mano en la aplicación (navegador de escritorio y vista móvil de 36
 tarjetas del [tablero](tablero.html) están en «Hecho». Quedan pendientes RNF-02 (medir
 tiempos de búsqueda) y RNF-06 (disponibilidad, que requiere desplegar la plataforma).
 
-El 22/10/2026 tres estudiantes que no conocían la aplicación la probaron con cuatro
-tareas: 3 de 4 quedaron validadas y «Reportar un material» (RF-09) no. Resultados y
-hallazgos en [`docs/validacion/`](docs/validacion/Validacion_con_estudiantes.md).
+La validación con estudiantes está pendiente. Un recorrido simulado con IA (no fue una
+sesión con estudiantes) anticipó siete problemas de uso, H-01 a H-07, que ya están
+corregidos y cubiertos por pruebas automáticas. El plan de la sesión con estudiantes está en
+[`docs/validacion/`](docs/validacion/Validacion_con_estudiantes.md).
 
 **Importante para el equipo:** a partir de este punto, el historial de commits debe
 reflejar el trabajo real del equipo (confirmaciones claras y frecuentes, como pide el
