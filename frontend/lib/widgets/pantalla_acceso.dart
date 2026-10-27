@@ -110,8 +110,8 @@ class _PanelInstitucional extends StatelessWidget {
           const SizedBox(height: 32),
           for (final (icono, titulo, texto) in const [
             (Icons.auto_awesome, 'Tutor IA', 'Te explica cada material, te hace un quiz y resuelve tus dudas paso a paso.'),
-            (Icons.folder_copy_outlined, 'Material por asignatura', 'Busca por semestre, asignatura o tema, sin distinguir tildes.'),
-            (Icons.groups_outlined, 'Comunidad UTB', 'Sube material (también de forma anónima), valóralo y reporta errores.'),
+            (Icons.timer_outlined, 'Simulacros de parcial', 'Un examen de práctica con los temas que más se repiten en tu asignatura.'),
+            (Icons.verified_user_outlined, 'Material verificado por IA', 'Cada archivo se revisa al subirlo: solo se publica material académico de la asignatura.'),
           ])
             Padding(
               padding: const EdgeInsets.only(bottom: 18),

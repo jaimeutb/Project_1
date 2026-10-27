@@ -16,8 +16,14 @@ class MaterialService {
     int? asignaturaId,
     String? semestre,
     String? texto,
+    String? tipo,
+    bool soloMios = false,
+    String? estado,
   }) async {
     final query = <String, String>{};
+    if (tipo != null) query['tipo'] = tipo; // RF-17: tipo que identificó la IA
+    if (soloMios) query['mios'] = 'true';
+    if (estado != null) query['estado'] = estado;
     if (asignaturaId != null) query['asignatura_id'] = '$asignaturaId';
     if (semestre != null && semestre.isNotEmpty) query['semestre'] = semestre;
     if (texto != null && texto.isNotEmpty) query['q'] = texto;

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart' hide Material;
 import 'package:flutter/material.dart' as flutter show Material;
 
+import '../config/api_config.dart';
 import '../models/material.dart' as modelo;
 import '../theme/utb_theme.dart';
 
-/// Tarjeta de resumen de un material en los resultados de búsqueda (RF-03/RF-04).
+/// Tarjeta de un material en los resultados de búsqueda (RF-03/RF-04), con su
+/// vista previa (RF-19) y lo que identificó la IA al revisarlo (RF-17).
 class MaterialCard extends StatelessWidget {
   final modelo.Material material;
   final VoidCallback onTap;
@@ -14,41 +16,55 @@ class MaterialCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reportado = material.estado != 'publicado';
-    // Solo el administrador recibe material retirado (RF-12).
+    // Solo el administrador (y el autor, si está pendiente) recibe este material.
     final retirado = material.estado == 'retirado';
-    final (iconoArchivo, tipoArchivo) = tipoDeArchivo(material.archivoUrl);
+    final revision = material.revisionIa;
 
     return flutter.Material(
       color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         side: const BorderSide(color: UtbColores.borde),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  MiniaturaMaterial(material: material),
+                  Positioned(
+                    left: 10,
+                    top: 10,
+                    child: Wrap(spacing: 6, children: [
+                      if (revision != null && revision.tipo != 'otro')
+                        Etiqueta(revision.tipoVisible,
+                            color: Colors.white, fondo: const Color(0xCC1F2566)),
+                      if (revision != null && revision.aprobado)
+                        const Etiqueta('Verificado por IA',
+                            color: Colors.white,
+                            fondo: Color(0xE6187943),
+                            icono: Icons.verified_outlined),
+                    ]),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: UtbColores.verde10,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(iconoArchivo, color: UtbColores.verde),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
                           material.asignaturaNombre,
                           style: const TextStyle(
                             color: UtbColores.azul,
@@ -56,47 +72,57 @@ class MaterialCard extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          material.titulo,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                            color: UtbColores.texto,
-                          ),
+                      ),
+                      if (reportado)
+                        Chip(
+                          label: Text(material.estadoVisible),
+                          labelStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                          backgroundColor: retirado
+                              ? const Color(0xFFECECEC)
+                              : UtbColores.ambar10,
+                          side: BorderSide.none,
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    material.titulo,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      height: 1.3,
+                      color: UtbColores.texto,
                     ),
                   ),
-                  if (reportado)
-                    Chip(
-                      label: Text(material.estadoVisible),
-                      backgroundColor:
-                          retirado ? const Color(0xFFECECEC) : const Color(0xFFFDF3D6),
-                      side: BorderSide.none,
-                      visualDensity: VisualDensity.compact,
+                  if (material.profesor != null || material.periodoAcademico != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        [
+                          if (material.profesor != null) 'Prof. ${material.profesor}',
+                          if (material.periodoAcademico != null) material.periodoAcademico!,
+                        ].join(' · '),
+                        style: const TextStyle(color: UtbColores.textoSecundario, fontSize: 12),
+                      ),
                     ),
-                ],
-              ),
-              if (material.profesor != null || material.periodoAcademico != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    [
-                      if (material.profesor != null) 'Prof. ${material.profesor}',
-                      if (material.periodoAcademico != null) material.periodoAcademico!,
-                    ].join(' · '),
-                    style: const TextStyle(color: UtbColores.textoSecundario, fontSize: 12),
-                  ),
-                ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 14,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
+                  if (revision != null && revision.temas.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final tema in revision.temas.take(3))
+                            Etiqueta(tema, color: UtbColores.verdeOscuro, fondo: UtbColores.verde10),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 12),
                   Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(Icons.star_rounded, size: 18, color: UtbColores.ambar),
                       const SizedBox(width: 3),
@@ -106,25 +132,64 @@ class MaterialCard extends StatelessWidget {
                             : 'Sin valoraciones',
                         style: const TextStyle(fontSize: 12),
                       ),
-                    ],
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.person_outline,
-                          size: 16, color: UtbColores.textoSecundario),
+                      const SizedBox(width: 14),
+                      const Icon(Icons.person_outline, size: 16, color: UtbColores.textoSecundario),
                       const SizedBox(width: 3),
-                      Text(material.autorVisible, style: const TextStyle(fontSize: 12)),
+                      Flexible(
+                        child: Text(material.autorVisible,
+                            overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                      ),
                     ],
                   ),
-                  Text(tipoArchivo,
-                      style: const TextStyle(fontSize: 12, color: UtbColores.textoSecundario)),
-                  const _EtiquetaTutor(),
                 ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+/// Vista previa del material (RF-19): la miniatura del servidor o, si no tiene
+/// (Word, ZIP o material anterior a esta función), un fondo con el ícono del tipo
+/// de archivo.
+class MiniaturaMaterial extends StatelessWidget {
+  final modelo.Material material;
+  const MiniaturaMaterial({super.key, required this.material});
+
+  @override
+  Widget build(BuildContext context) {
+    final (icono, tipo) = tipoDeArchivo(material.archivoUrl);
+    final respaldo = Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [UtbColores.azul10, UtbColores.verde10],
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icono, size: 38, color: UtbColores.azul),
+          const SizedBox(height: 4),
+          Text(tipo,
+              style: const TextStyle(
+                  color: UtbColores.azul, fontWeight: FontWeight.w700, fontSize: 12)),
+        ],
+      ),
+    );
+    final url = material.miniaturaUrl;
+    if (url == null) return respaldo;
+    return Container(
+      color: const Color(0xFFF0F1F6),
+      child: Image.network(
+        ApiConfig.archivo(url).toString(),
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        semanticLabel: 'Vista previa de ${material.titulo}',
+        errorBuilder: (_, __, ___) => respaldo,
       ),
     );
   }
@@ -140,28 +205,4 @@ class MaterialCard extends StatelessWidget {
     'zip' => (Icons.folder_zip_outlined, 'ZIP'),
     _ => (Icons.insert_drive_file_outlined, 'Archivo'),
   };
-}
-
-class _EtiquetaTutor extends StatelessWidget {
-  const _EtiquetaTutor();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: UtbColores.azul10,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.auto_awesome, size: 13, color: UtbColores.azul),
-          SizedBox(width: 4),
-          Text('Tutor IA',
-              style: TextStyle(fontSize: 11, color: UtbColores.azul, fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
-  }
 }

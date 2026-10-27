@@ -4,6 +4,7 @@ import '../models/tutor_ia.dart';
 import '../services/api_client.dart';
 import '../services/tutor_ia_service.dart';
 import '../theme/utb_theme.dart';
+import 'quiz_interactivo.dart';
 
 enum SeccionTutor { explicacion, practica, preguntas }
 
@@ -79,8 +80,8 @@ class _TutorIaPanelState extends State<TutorIaPanel> {
       return const _MensajeInfo(
         icono: Icons.key_off_outlined,
         titulo: 'El Tutor IA no está configurado en este servidor',
-        texto: 'El administrador debe agregar la clave ANTHROPIC_API_KEY en el archivo '
-            'backend/.env y reiniciar el servidor. El resto de la plataforma funciona normalmente.',
+        texto: 'El administrador debe agregar la clave gratuita GEMINI_API_KEY (de Google AI '
+            'Studio) en backend/.env y reiniciar el servidor. El resto de la plataforma funciona normalmente.',
       );
     }
     return Column(
@@ -423,8 +424,6 @@ class _SeccionPractica extends StatefulWidget {
 
 class _SeccionPracticaState extends State<_SeccionPractica> {
   PracticaIa? _practica;
-  // Respuesta elegida por el estudiante en cada pregunta (por posición).
-  final Map<int, int> _respuestas = {};
   bool _cargando = false;
   String? _error;
 
@@ -435,12 +434,7 @@ class _SeccionPracticaState extends State<_SeccionPractica> {
     });
     try {
       final practica = await widget.service.practicar(widget.materialId, nueva: nueva);
-      if (mounted) {
-        setState(() {
-          _practica = practica;
-          _respuestas.clear();
-        });
-      }
+      if (mounted) setState(() => _practica = practica);
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.mensaje);
     } catch (_) {
@@ -466,37 +460,12 @@ class _SeccionPracticaState extends State<_SeccionPractica> {
         onPressed: _generar,
       );
     }
-    final total = practica.preguntas.length;
-    final correctas = _respuestas.entries
-        .where((r) => practica.preguntas[r.key].correcta == r.value)
-        .length;
-    final terminado = _respuestas.length == total;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (!practica.leyoArchivo) const _AvisoSinArchivo(),
-        _Marcador(respondidas: _respuestas.length, correctas: correctas, total: total),
-        const SizedBox(height: 12),
-        for (final (i, pregunta) in practica.preguntas.indexed)
-          _TarjetaPregunta(
-            numero: i + 1,
-            pregunta: pregunta,
-            elegida: _respuestas[i],
-            onElegir: (opcion) => setState(() => _respuestas[i] = opcion),
-          ),
-        if (terminado)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              correctas == total
-                  ? '¡Excelente! Respondiste todo bien. Estás listo para este tema.'
-                  : correctas >= total / 2
-                      ? 'Vas bien. Repasa las preguntas que fallaste con su explicación.'
-                      : 'Te conviene repasar. Mira la pestaña «Explicación» y vuelve a intentarlo.',
-              style: const TextStyle(fontWeight: FontWeight.w600, color: UtbColores.azulOscuro),
-            ),
-          ),
+        // La clave reinicia las respuestas cuando llegan preguntas nuevas.
+        QuizInteractivo(key: ObjectKey(practica), preguntas: practica.preguntas),
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
@@ -506,161 +475,6 @@ class _SeccionPracticaState extends State<_SeccionPractica> {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _Marcador extends StatelessWidget {
-  final int respondidas;
-  final int correctas;
-  final int total;
-  const _Marcador({required this.respondidas, required this.correctas, required this.total});
-
-  @override
-  Widget build(BuildContext context) {
-    return TarjetaUtb(
-      padding: const EdgeInsets.all(12),
-      color: UtbColores.azul10,
-      colorBorde: UtbColores.azul20,
-      child: Row(
-        children: [
-          const Icon(Icons.emoji_events_outlined, color: UtbColores.azul),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Respondidas: $respondidas de $total · Correctas: $correctas',
-              style: const TextStyle(fontWeight: FontWeight.w700, color: UtbColores.azulOscuro),
-            ),
-          ),
-          SizedBox(
-            width: 64,
-            child: LinearProgressIndicator(
-              value: total == 0 ? 0 : respondidas / total,
-              minHeight: 6,
-              borderRadius: BorderRadius.circular(4),
-              backgroundColor: Colors.white,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TarjetaPregunta extends StatelessWidget {
-  final int numero;
-  final PreguntaPractica pregunta;
-  final int? elegida;
-  final ValueChanged<int> onElegir;
-
-  const _TarjetaPregunta({
-    required this.numero,
-    required this.pregunta,
-    required this.elegida,
-    required this.onElegir,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final respondida = elegida != null;
-    final acerto = elegida == pregunta.correcta;
-    const letras = ['A', 'B', 'C', 'D', 'E', 'F'];
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TarjetaUtb(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Pregunta $numero',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700, color: UtbColores.azul, fontSize: 13)),
-            const SizedBox(height: 4),
-            Text(pregunta.enunciado, style: const TextStyle(fontWeight: FontWeight.w600, height: 1.4)),
-            const SizedBox(height: 10),
-            for (final (i, opcion) in pregunta.opciones.indexed)
-              _Opcion(
-                letra: i < letras.length ? letras[i] : '${i + 1}',
-                texto: opcion,
-                estado: !respondida
-                    ? _EstadoOpcion.normal
-                    : i == pregunta.correcta
-                        ? _EstadoOpcion.correcta
-                        : i == elegida
-                            ? _EstadoOpcion.incorrecta
-                            : _EstadoOpcion.inactiva,
-                onTap: respondida ? null : () => onElegir(i),
-              ),
-            if (respondida)
-              _Revelado(
-                acerto ? '¡Correcto!' : 'Incorrecto',
-                pregunta.explicacion,
-                acerto ? UtbColores.verde10 : const Color(0xFFFDECEA),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-enum _EstadoOpcion { normal, correcta, incorrecta, inactiva }
-
-class _Opcion extends StatelessWidget {
-  final String letra;
-  final String texto;
-  final _EstadoOpcion estado;
-  final VoidCallback? onTap;
-
-  const _Opcion({required this.letra, required this.texto, required this.estado, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final (fondo, borde, icono) = switch (estado) {
-      _EstadoOpcion.correcta => (UtbColores.verde10, UtbColores.verde, Icons.check_circle),
-      _EstadoOpcion.incorrecta => (const Color(0xFFFDECEA), UtbColores.error, Icons.cancel),
-      _ => (Colors.white, UtbColores.borde, null),
-    };
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: fondo,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: BorderSide(color: borde),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 13,
-                  backgroundColor: estado == _EstadoOpcion.inactiva ? UtbColores.fondo : UtbColores.azul10,
-                  child: Text(letra,
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w700, color: UtbColores.azul)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    texto,
-                    style: TextStyle(
-                      color: estado == _EstadoOpcion.inactiva
-                          ? UtbColores.textoSecundario
-                          : UtbColores.texto,
-                    ),
-                  ),
-                ),
-                if (icono != null) Icon(icono, color: borde, size: 20),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

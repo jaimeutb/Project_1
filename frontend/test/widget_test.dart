@@ -20,6 +20,7 @@ import 'package:plataforma_apoyo_academico/screens/admin_reportes_screen.dart';
 import 'package:plataforma_apoyo_academico/screens/admin_usuarios_screen.dart';
 import 'package:plataforma_apoyo_academico/screens/home_screen.dart';
 import 'package:plataforma_apoyo_academico/screens/material_detail_screen.dart';
+import 'package:plataforma_apoyo_academico/screens/simulacro_screen.dart';
 import 'package:plataforma_apoyo_academico/state/session.dart';
 import 'package:plataforma_apoyo_academico/widgets/material_card.dart';
 import 'package:plataforma_apoyo_academico/widgets/tutor_ia_panel.dart';
@@ -298,9 +299,13 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
+    // En el celular, la navegación va en la barra inferior.
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.text('Subir material'), findsOneWidget);
+    await tester.tap(find.text('Explorar'));
+    await tester.pumpAndSettle();
     expect(find.text('Semestre'), findsOneWidget);
     expect(find.text('Asignatura'), findsOneWidget);
-    expect(find.text('Subir material'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Administración'));
     await tester.pumpAndSettle();
@@ -547,6 +552,180 @@ void main() {
     expect(find.text('Plataforma de\nApoyo Académico'), findsOneWidget);
     expect(find.text('Tutor IA'), findsOneWidget);
     expect(find.text('Iniciar sesión'), findsOneWidget);
+  });
+
+  // ------------------------------------------------------------ RF-17 a RF-19
+
+  Map<String, dynamic> revisionJson({String veredicto = 'aprobado', Map<String, bool>? criterios}) => {
+        'veredicto': veredicto,
+        'motivo': veredicto == 'rechazado'
+            ? 'Es una guía de química, no de Cálculo I.'
+            : 'Parcial de límites con soluciones.',
+        'tipo': 'parcial',
+        'temas': ['Límites', 'Continuidad'],
+        'dificultad': 'media',
+        'resumen': 'Cinco ejercicios resueltos.',
+        'criterios': criterios ??
+            {
+              'es_material_academico': true,
+              'coincide_con_asignatura': veredicto != 'rechazado',
+              'coincide_con_titulo': true,
+              'legible': true,
+              'contenido_inapropiado': false,
+              'datos_personales': false,
+            },
+      };
+
+  /// Abre el diálogo de carga, completa el formulario y pulsa «Subir».
+  Future<void> subirConDialogo(WidgetTester tester, MockClient api) async {
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    FilePicker.platform = _SelectorDeArchivoFalso();
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => TextButton(
+          onPressed: () => showDialog<modelo.Material>(
+            context: context,
+            builder: (_) => const DialogoSubirMaterial(
+              asignaturas: [Asignatura(id: 3, nombre: 'Cálculo I', codigo: 'MAT101', semestre: '1')],
+              token: 'token',
+            ),
+          ),
+          child: const Text('abrir'),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('abrir'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Título'), 'Guía 1');
+    await tester.tap(find.byType(DropdownButtonFormField<Asignatura>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cálculo I (MAT101 · 1)').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Elegir archivo'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Subir'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('RF-17: si la IA rechaza el material, se ve el motivo y se puede corregir',
+      (tester) async {
+    final api = MockClient((request) async => _json({
+          'error': 'La IA no aprobó el material: Es una guía de química, no de Cálculo I.',
+          'revision': revisionJson(veredicto: 'rechazado'),
+        }, 422));
+    await http.runWithClient(() async {
+      await subirConDialogo(tester, api);
+      expect(find.text('La IA no aprobó el material'), findsOneWidget);
+      expect(find.text('Es una guía de química, no de Cálculo I.'), findsOneWidget);
+      expect(find.text('Corresponde a la asignatura'), findsOneWidget);
+      expect(find.byIcon(Icons.cancel), findsOneWidget); // el criterio que falló
+
+      await tester.tap(find.text('Corregir y reintentar'));
+      await tester.pumpAndSettle();
+      // Vuelve al formulario con los datos que ya había escrito.
+      expect(find.text('Guía 1'), findsOneWidget);
+      expect(find.text('quiz.pdf'), findsOneWidget);
+    }, () => api);
+  });
+
+  testWidgets('RF-17/RF-19: si la IA aprueba, se ve la vista previa y lo que identificó',
+      (tester) async {
+    final api = MockClient((request) async => _json({
+          ..._materialJson(estado: 'publicado'),
+          'miniatura_url': null,
+          'revision_ia': revisionJson(),
+        }, 201));
+    await http.runWithClient(() async {
+      await subirConDialogo(tester, api);
+      expect(find.text('¡Material publicado!'), findsOneWidget);
+      expect(find.text('Parcial'), findsOneWidget);
+      expect(find.text('Dificultad media'), findsOneWidget);
+      expect(find.text('Límites'), findsOneWidget);
+      await tester.tap(find.text('Listo'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DialogoSubirMaterial), findsNothing);
+    }, () => api);
+  });
+
+  testWidgets('RF-17: la tarjeta muestra el tipo, los temas y «Verificado por IA»', (tester) async {
+    final material = modelo.Material.fromJson({
+      ..._materialJson(estado: 'publicado'),
+      'revision_ia': revisionJson(),
+    });
+    await tester.pumpWidget(_envolver(SizedBox(
+      width: 360,
+      child: MaterialCard(material: material, onTap: () {}),
+    )));
+    expect(find.text('Verificado por IA'), findsOneWidget);
+    expect(find.text('Parcial'), findsOneWidget);
+    expect(find.text('Continuidad'), findsOneWidget);
+    expect(material.revisionIa!.tipoVisible, 'Parcial');
+    expect(material.estadoVisible, 'Publicado');
+    expect(_material(estado: 'pendiente').estadoVisible, 'Pendiente de revisión');
+  });
+
+  testWidgets('RF-18: el simulacro muestra la nota y los temas para repasar', (tester) async {
+    tester.view.physicalSize = const Size(1000, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = MockClient((request) async {
+      if (request.url.path == '/api/ia/estado') return _json({'disponible': true, 'limite_por_hora': 20});
+      return _json({
+        'materiales_usados': 2,
+        'contenido': {
+          'preguntas': [
+            {'enunciado': '¿Derivada de x²?', 'opciones': ['x', '2x', 'x²', '2'], 'correcta': 1, 'explicacion': 'Regla de la potencia.', 'tema': 'Derivadas'},
+          ],
+        },
+      });
+    });
+    await http.runWithClient(() async {
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SimulacroPagina(
+              asignaturas: [
+                Asignatura(id: 3, nombre: 'Cálculo I', codigo: 'MAT101', semestre: '1', totalMateriales: 2),
+                Asignatura(id: 4, nombre: 'Sin material', codigo: 'X', semestre: '1'),
+              ],
+              token: 'token',
+              inicial: Asignatura(id: 3, nombre: 'Cálculo I', codigo: 'MAT101', semestre: '1', totalMateriales: 2),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Generar simulacro'));
+      await tester.pumpAndSettle();
+      expect(find.text('¿Derivada de x²?'), findsOneWidget);
+      await tester.tap(find.text('x').last); // respuesta incorrecta
+      await tester.pumpAndSettle();
+      expect(find.text('0.0'), findsOneWidget);
+      expect(find.text('Temas para repasar:'), findsOneWidget);
+      expect(find.text('Derivadas'), findsWidgets);
+    }, () => api);
+  });
+
+  testWidgets('en computador, la barra lateral muestra las secciones y la administración',
+      (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final session = await sesionAdministrador();
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: session,
+      child: const MaterialApp(home: HomeScreen()),
+    ));
+    await tester.pumpAndSettle();
+    for (final texto in ['Inicio', 'Explorar', 'Simulacro IA', 'Mis aportes', 'Usuarios']) {
+      expect(find.text(texto), findsOneWidget, reason: texto);
+    }
+    expect(find.text('¿Qué vas a estudiar hoy?'), findsOneWidget);
+    await tester.tap(find.text('Mis aportes'));
+    await tester.pumpAndSettle();
+    expect(find.text('Nuevo aporte'), findsOneWidget);
   });
 
   test('el tipo de archivo se reconoce por su extensión', () {

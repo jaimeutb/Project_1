@@ -4,6 +4,7 @@ class Asignatura {
   final String codigo;
   final String semestre;
   final bool activo; // RF-13: el administrador puede desactivarla
+  final int totalMateriales;
 
   const Asignatura({
     required this.id,
@@ -11,6 +12,7 @@ class Asignatura {
     required this.codigo,
     required this.semestre,
     this.activo = true,
+    this.totalMateriales = 0,
   });
 
   factory Asignatura.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class Asignatura {
       codigo: json['codigo'] as String,
       semestre: json['semestre'] as String,
       activo: json['activo'] as bool? ?? true,
+      totalMateriales: json['total_materiales'] as int? ?? 0,
     );
   }
 

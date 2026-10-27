@@ -9,7 +9,7 @@ import '../services/api_client.dart';
 import '../services/material_service.dart';
 import '../state/session.dart';
 import '../theme/utb_theme.dart';
-import '../widgets/material_card.dart' show tipoDeArchivo;
+import '../widgets/material_card.dart' show MiniaturaMaterial, tipoDeArchivo;
 import '../widgets/tutor_ia_panel.dart';
 
 /// RF-05: visualización del material. Desde aquí también se descarga
@@ -195,6 +195,21 @@ class _MaterialDetailScreenState extends State<MaterialDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // RF-19: vista previa; al tocarla se abre el archivo completo.
+          if (m.miniaturaUrl != null) ...[
+            Tooltip(
+              message: 'Abrir el archivo',
+              child: InkWell(
+                onTap: _descargar,
+                borderRadius: BorderRadius.circular(16),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: AspectRatio(aspectRatio: 16 / 10, child: MiniaturaMaterial(material: m)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -237,6 +252,10 @@ class _MaterialDetailScreenState extends State<MaterialDetailScreen> {
                 '${m.calificacionPromedio.toStringAsFixed(1)} (${m.totalValoraciones})'),
             _Info('Archivo', tipoArchivo),
           ]),
+          if (m.revisionIa != null) ...[
+            const SizedBox(height: 18),
+            _RevisionDeLaIa(m.revisionIa!),
+          ],
           const SizedBox(height: 20),
           Wrap(spacing: 10, runSpacing: 10, children: [
             FilledButton.icon(
@@ -353,6 +372,53 @@ class _Info extends StatelessWidget {
         Text(etiqueta, style: const TextStyle(fontSize: 11, color: UtbColores.textoSecundario)),
         Text(valor, style: const TextStyle(fontWeight: FontWeight.w600)),
       ],
+    );
+  }
+}
+
+/// RF-17: lo que dijo la IA al revisar el material cuando se subió.
+class _RevisionDeLaIa extends StatelessWidget {
+  final modelo.RevisionIa revision;
+  const _RevisionDeLaIa(this.revision);
+
+  @override
+  Widget build(BuildContext context) {
+    final aprobado = revision.aprobado;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: aprobado ? UtbColores.verde10 : UtbColores.ambar10,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(aprobado ? Icons.verified_outlined : Icons.hourglass_top,
+                  size: 19, color: aprobado ? UtbColores.verde : const Color(0xFF8A5A00)),
+              const SizedBox(width: 8),
+              Text(aprobado ? 'Verificado por IA' : 'Revisión de la IA: con dudas',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+            ],
+          ),
+          if (revision.resumen != null) ...[
+            const SizedBox(height: 6),
+            Text(revision.resumen!, style: const TextStyle(height: 1.4)),
+          ],
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            if (revision.tipo != 'otro')
+              Etiqueta(revision.tipoVisible, color: Colors.white, fondo: UtbColores.azul),
+            if (revision.dificultadVisible != null)
+              Etiqueta('Dificultad ${revision.dificultadVisible!.toLowerCase()}',
+                  color: UtbColores.azulOscuro, fondo: Colors.white),
+            for (final t in revision.temas)
+              Etiqueta(t, color: UtbColores.verdeOscuro, fondo: Colors.white),
+          ]),
+        ],
+      ),
     );
   }
 }

@@ -79,12 +79,14 @@ class PreguntaPractica {
   final List<String> opciones;
   final int correcta;
   final String explicacion;
+  final String tema;
 
   const PreguntaPractica({
     required this.enunciado,
     required this.opciones,
     required this.correcta,
     required this.explicacion,
+    this.tema = '',
   });
 
   factory PreguntaPractica.fromJson(Map<String, dynamic> json) => PreguntaPractica(
@@ -92,6 +94,23 @@ class PreguntaPractica {
         opciones: [for (final o in json['opciones'] as List? ?? []) '$o'],
         correcta: json['correcta'] as int? ?? 0,
         explicacion: json['explicacion'] as String? ?? '',
+        tema: json['tema'] as String? ?? '',
+      );
+}
+
+/// RF-18: simulacro de parcial de una asignatura.
+class SimulacroIa {
+  final List<PreguntaPractica> preguntas;
+  final int materialesUsados;
+
+  const SimulacroIa({required this.preguntas, required this.materialesUsados});
+
+  factory SimulacroIa.fromJson(Map<String, dynamic> json) => SimulacroIa(
+        preguntas: [
+          for (final p in (json['contenido'] as Map<String, dynamic>)['preguntas'] as List? ?? [])
+            PreguntaPractica.fromJson(p),
+        ],
+        materialesUsados: json['materiales_usados'] as int? ?? 0,
       );
 }
 

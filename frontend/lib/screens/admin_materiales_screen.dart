@@ -5,9 +5,12 @@ import '../models/material.dart' as modelo;
 import '../services/api_client.dart';
 import '../services/material_service.dart';
 import '../state/session.dart';
+import '../theme/utb_theme.dart';
+import '../widgets/material_card.dart' show MiniaturaMaterial;
 
 /// RF-12: el administrador gestiona (edita el estado / elimina) el material
-/// publicado por los estudiantes.
+/// publicado por los estudiantes. RF-17: lo que la IA dejó pendiente aparece
+/// primero, con su motivo, para aprobarlo o retirarlo con un clic.
 class AdminMaterialesScreen extends StatefulWidget {
   const AdminMaterialesScreen({super.key});
 
@@ -34,7 +37,10 @@ class _AdminMaterialesScreenState extends State<AdminMaterialesScreen> {
       // Sin filtro de estado: el administrador ve todo el material, incluido
       // el reportado o retirado.
       final materiales = await MaterialService(_token).buscar();
-      setState(() => _materiales = materiales);
+      // Lo pendiente de revisión primero (orden estable: sigue por fecha).
+      final pendientes = materiales.where((m) => m.estado == 'pendiente');
+      final resto = materiales.where((m) => m.estado != 'pendiente');
+      setState(() => _materiales = [...pendientes, ...resto]);
     } on ApiException catch (e) {
       setState(() => _error = e.mensaje);
     } finally {
@@ -103,22 +109,44 @@ class _AdminMaterialesScreenState extends State<AdminMaterialesScreen> {
       body: _cargando
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
+              ? Center(child: Text(_error!, style: const TextStyle(color: UtbColores.error)))
               : ListView.builder(
-                  itemCount: _materiales.length,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _materiales.length + 1,
                   itemBuilder: (context, i) {
-                    final m = _materiales[i];
+                    if (i == 0) return _ResumenPendientes(_materiales);
+                    final m = _materiales[i - 1];
+                    final pendiente = m.estado == 'pendiente';
                     return ListTile(
+                      tileColor: pendiente ? UtbColores.ambar10 : null,
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(width: 56, height: 42, child: MiniaturaMaterial(material: m)),
+                      ),
                       title: Text(m.titulo),
                       subtitle: Text([
                         m.asignaturaNombre,
-                        'estado: ${m.estado}',
+                        'estado: ${m.estadoVisible}',
                         if (m.reportesPendientes > 0)
                           '${m.reportesPendientes} reporte(s) pendiente(s)',
+                        if (pendiente && m.revisionIa != null) 'IA: ${m.revisionIa!.motivo}',
                       ].join(' · ')),
+                      isThreeLine: pendiente,
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (pendiente) ...[
+                            IconButton(
+                              tooltip: 'Aprobar y publicar',
+                              icon: const Icon(Icons.check_circle_outline, color: UtbColores.verde),
+                              onPressed: () => _cambiarEstado(m, 'publicado'),
+                            ),
+                            IconButton(
+                              tooltip: 'Rechazar (retirar)',
+                              icon: const Icon(Icons.block, color: UtbColores.error),
+                              onPressed: () => _cambiarEstado(m, 'retirado'),
+                            ),
+                          ],
                           IconButton(
                             tooltip: 'Editar datos',
                             icon: const Icon(Icons.edit_outlined),
@@ -131,6 +159,7 @@ class _AdminMaterialesScreenState extends State<AdminMaterialesScreen> {
                               PopupMenuItem(value: 'publicado', child: Text('Publicado')),
                               PopupMenuItem(value: 'en_revision', child: Text('En revisión')),
                               PopupMenuItem(value: 'retirado', child: Text('Retirado')),
+                              PopupMenuItem(value: 'pendiente', child: Text('Pendiente de revisión')),
                             ],
                             icon: const Icon(Icons.swap_horiz),
                           ),
@@ -144,6 +173,40 @@ class _AdminMaterialesScreenState extends State<AdminMaterialesScreen> {
                     );
                   },
                 ),
+    );
+  }
+}
+
+/// Aviso con la cantidad de material que la IA dejó pendiente (RF-17).
+class _ResumenPendientes extends StatelessWidget {
+  final List<modelo.Material> materiales;
+  const _ResumenPendientes(this.materiales);
+
+  @override
+  Widget build(BuildContext context) {
+    final pendientes = materiales.where((m) => m.estado == 'pendiente').length;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: pendientes > 0 ? UtbColores.ambar10 : UtbColores.verde10,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(pendientes > 0 ? Icons.pending_actions : Icons.verified_user_outlined,
+              color: pendientes > 0 ? const Color(0xFF8A5A00) : UtbColores.verde),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              pendientes > 0
+                  ? '$pendientes material(es) esperan su revisión: la IA tuvo dudas al revisarlos.'
+                  : 'No hay material pendiente: la IA revisa cada archivo al subirlo.',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

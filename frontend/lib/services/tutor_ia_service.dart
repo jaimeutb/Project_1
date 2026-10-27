@@ -32,6 +32,15 @@ class TutorIaService {
     return PracticaIa.fromJson(data);
   }
 
+  /// RF-18: simulacro de parcial con el material de una asignatura.
+  Future<SimulacroIa> simulacro(int asignaturaId, {int preguntas = 10}) async {
+    final data = await _client.post(
+      ApiConfig.api('/asignaturas/$asignaturaId/ia/simulacro'),
+      {'preguntas': preguntas},
+    );
+    return SimulacroIa.fromJson(data);
+  }
+
   /// RF-16. El historial viaja en cada pregunta: el servidor no guarda la
   /// conversación (R-11).
   Future<String> preguntar(int materialId, List<TurnoChat> historial, String pregunta) async {

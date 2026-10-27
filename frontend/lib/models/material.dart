@@ -17,6 +17,9 @@ class Material {
   final double calificacionPromedio;
   final int totalValoraciones;
   final int reportesPendientes;
+  final String? miniaturaUrl; // RF-19: vista previa (primera página o la imagen)
+  final RevisionIa? revisionIa; // RF-17: revisión automática al subirlo
+  final bool esMio;
 
   const Material({
     required this.id,
@@ -34,6 +37,9 @@ class Material {
     required this.calificacionPromedio,
     required this.totalValoraciones,
     required this.reportesPendientes,
+    this.miniaturaUrl,
+    this.revisionIa,
+    this.esMio = false,
   });
 
   factory Material.fromJson(Map<String, dynamic> json) {
@@ -55,6 +61,11 @@ class Material {
       totalValoraciones: int.tryParse('${json['total_valoraciones']}') ?? 0,
       reportesPendientes:
           int.tryParse('${json['reportes_pendientes']}') ?? 0,
+      miniaturaUrl: json['miniatura_url'] as String?,
+      revisionIa: json['revision_ia'] is Map<String, dynamic>
+          ? RevisionIa.fromJson(json['revision_ia'] as Map<String, dynamic>)
+          : null,
+      esMio: json['es_mio'] as bool? ?? false,
     );
   }
 
@@ -67,6 +78,62 @@ class Material {
   String get estadoVisible => switch (estado) {
         'publicado' => 'Publicado',
         'retirado' => 'Retirado',
+        'pendiente' => 'Pendiente de revisión',
         _ => 'En revisión',
       };
 }
+
+/// RF-17: resultado de la revisión automática del material al subirlo.
+class RevisionIa {
+  final String veredicto; // aprobado | dudoso | rechazado
+  final String motivo;
+  final String tipo; // parcial | quiz | taller | guia | apuntes | otro
+  final List<String> temas;
+  final String? dificultad; // basica | media | avanzada
+  final String? resumen;
+  final Map<String, bool> criterios;
+
+  const RevisionIa({
+    required this.veredicto,
+    required this.motivo,
+    required this.tipo,
+    required this.temas,
+    this.dificultad,
+    this.resumen,
+    this.criterios = const {},
+  });
+
+  factory RevisionIa.fromJson(Map<String, dynamic> json) => RevisionIa(
+        veredicto: json['veredicto'] as String? ?? 'dudoso',
+        motivo: json['motivo'] as String? ?? '',
+        tipo: json['tipo'] as String? ?? 'otro',
+        temas: [for (final t in json['temas'] as List? ?? []) '$t'],
+        dificultad: json['dificultad'] as String?,
+        resumen: json['resumen'] as String?,
+        criterios: {
+          for (final e in (json['criterios'] as Map<String, dynamic>? ?? {}).entries)
+            e.key: e.value == true,
+        },
+      );
+
+  bool get aprobado => veredicto == 'aprobado';
+
+  String get tipoVisible => nombreDeTipo(tipo);
+
+  String? get dificultadVisible => switch (dificultad) {
+        'basica' => 'Básica',
+        'media' => 'Media',
+        'avanzada' => 'Avanzada',
+        _ => null,
+      };
+}
+
+/// Nombre visible de cada tipo de material que identifica la IA.
+String nombreDeTipo(String tipo) => switch (tipo) {
+      'parcial' => 'Parcial',
+      'quiz' => 'Quiz',
+      'taller' => 'Taller',
+      'guia' => 'Guía',
+      'apuntes' => 'Apuntes',
+      _ => 'Otro',
+    };

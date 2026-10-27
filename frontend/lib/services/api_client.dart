@@ -6,7 +6,9 @@ import 'package:http/http.dart' as http;
 class ApiException implements Exception {
   final int statusCode;
   final String mensaje;
-  ApiException(this.statusCode, this.mensaje);
+  /// Cuerpo completo de la respuesta de error (p. ej. la revisión de la IA, RF-17).
+  final Map<String, dynamic> datos;
+  ApiException(this.statusCode, this.mensaje, [this.datos = const {}]);
 
   @override
   String toString() => mensaje;
@@ -34,7 +36,8 @@ class ApiClient {
     final mensaje = (body is Map && body['error'] != null)
         ? body['error'] as String
         : 'Error inesperado (HTTP ${res.statusCode}).';
-    throw ApiException(res.statusCode, mensaje);
+    throw ApiException(
+        res.statusCode, mensaje, body is Map<String, dynamic> ? body : const {});
   }
 
   Future<dynamic> get(Uri uri) async {
