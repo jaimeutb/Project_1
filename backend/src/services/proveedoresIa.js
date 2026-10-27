@@ -11,26 +11,60 @@ require('dotenv').config();
 
 /** Error con un código HTTP y un mensaje que se puede mostrar al estudiante. */
 class ErrorIa extends Error {
-  constructor(status, mensaje) {
+  /** reintentable: el mismo pedido podría funcionar con otro modelo (saturado o sin cuota). */
+  constructor(status, mensaje, reintentable = false) {
     super(mensaje);
     this.status = status;
+    this.reintentable = reintentable;
   }
 }
 
 const MAX_TOKENS = 16000;
 
 // ---------------------------------------------------------------- Gemini
+// En el nivel gratuito, un modelo puede estar saturado (503) o sin cuota (429) por
+// momentos. Por eso se prueba el principal y, si falla así, los de respaldo, que
+// también son gratuitos y tienen su propia cuota.
+const MODELOS_RESPALDO_GEMINI = (process.env.IA_MODELOS_RESPALDO_GEMINI
+  || 'gemini-3.8-flash,gemini-2.5-flash').split(',').map((m) => m.trim()).filter(Boolean);
+const SEGUNDOS_POR_INTENTO = Number(process.env.IA_SEGUNDOS_POR_INTENTO) || 60;
+
 const gemini = {
   nombre: 'gemini',
-  modelo: process.env.IA_MODELO_GEMINI || 'gemini-3.8-flash',
+  // flash-lite: el más rápido y el que más disponibilidad tiene en el nivel gratuito
+  // (2 a 4 s por revisión en las pruebas del 27/10/2026).
+  modelo: process.env.IA_MODELO_GEMINI || 'gemini-3.5-flash-lite',
+  ultimoModelo: null,
   clave: () => process.env.GEMINI_API_KEY,
   cliente: null,
 
-  async generar({ instrucciones, mensajes, esquema }) {
+  async generar(peticion) {
     if (!this.cliente) {
       const { GoogleGenAI } = await import('@google/genai');
-      this.cliente = new GoogleGenAI({ apiKey: this.clave() });
+      this.cliente = new GoogleGenAI({
+        apiKey: this.clave(),
+        // Un solo intento por modelo y tiempo máximo: si uno no responde se pasa al
+        // siguiente, en vez de dejar al estudiante esperando minutos.
+        httpOptions: { timeout: SEGUNDOS_POR_INTENTO * 1000, retryOptions: { attempts: 1 } },
+      });
     }
+    const modelos = [this.modelo, ...MODELOS_RESPALDO_GEMINI.filter((m) => m !== this.modelo)];
+    let ultimoError;
+    for (const modelo of modelos) {
+      try {
+        const texto = await this.generarCon(modelo, peticion);
+        this.ultimoModelo = modelo;
+        return texto;
+      } catch (err) {
+        if (!(err instanceof ErrorIa) || !err.reintentable) throw err;
+        console.warn(`Gemini: ${modelo} no está disponible (${err.message}); se prueba el siguiente modelo.`);
+        ultimoError = err;
+      }
+    }
+    throw ultimoError;
+  },
+
+  async generarCon(modelo, { instrucciones, mensajes, esquema }) {
     const contents = mensajes.map((m) => ({
       role: m.rol === 'modelo' ? 'model' : 'user',
       parts: m.partes.map((p) => (p.archivo
@@ -41,7 +75,7 @@ const gemini = {
     let respuesta;
     try {
       respuesta = await this.cliente.models.generateContent({
-        model: this.modelo,
+        model: modelo,
         contents,
         config: {
           systemInstruction: instrucciones,
@@ -52,7 +86,11 @@ const gemini = {
     } catch (err) {
       const status = err.status ?? 0;
       if (status === 429) {
-        throw new ErrorIa(429, 'Se alcanzó el límite gratuito de la IA por ahora. Intente de nuevo en un minuto.');
+        throw new ErrorIa(429, 'Se alcanzó el límite gratuito de la IA por ahora. Intente de nuevo en un minuto.', true);
+      }
+      // 500/503/504: el modelo está saturado; sin estado: se agotó el tiempo o falló la red.
+      if (status >= 500 || status === 0) {
+        throw new ErrorIa(503, 'La IA gratuita está muy ocupada en este momento. Intente de nuevo en unos minutos.', true);
       }
       if (status === 400 && /api key/i.test(err.message)) {
         throw new ErrorIa(503, 'La clave de la API de IA no es válida.');
