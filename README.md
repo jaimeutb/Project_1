@@ -1,6 +1,6 @@
 # Plataforma de Apoyo Académico · UTB
 
-![Pantalla principal](docs/ia/capturas/02-pantalla-principal.png)
+![Pantalla principal](docs/ia/capturas/v2-inicio.png)
 
 Proyecto de aula — curso de Ingeniería de Software, Universidad Tecnológica de Bolívar.
 Equipo: **Jaime Mochen** y **Cristian David Cardeño Gulloso**.
@@ -10,10 +10,18 @@ consultar material de estudio (parciales anteriores, talleres y otros recursos),
 clasificado por asignatura, semestre y tema, para facilitar la práctica autónoma y el
 refuerzo de conocimientos antes de las evaluaciones.
 
-**Nuevo: Tutor IA.** Cada material tiene un tutor con inteligencia artificial (Claude, de
-Anthropic) que lee el PDF o la imagen y **explica** sus temas, con pista y solución paso a
-paso de los ejercicios clave; genera un **quiz** de práctica con retroalimentación, y
-**responde dudas** en un chat. Ver [`docs/ia/Tutor_IA.md`](docs/ia/Tutor_IA.md).
+**Nuevo: inteligencia artificial gratuita (Google Gemini).**
+
+- **Material verificado por IA:** al subir un archivo, la IA revisa que sea material
+  académico de la asignatura elegida, legible y apropiado. Si no, no se publica y quien lo
+  subió ve el motivo; si tiene dudas, lo deja pendiente para el administrador.
+- **Vista previa:** cada material muestra la primera página del PDF o la imagen.
+- **Tutor IA:** en cada material, **explica** los temas con pista y solución paso a paso,
+  genera un **quiz** de práctica y **responde dudas** en un chat.
+- **Simulacro de parcial:** un examen de práctica con los temas que más se repiten en la
+  asignatura, con nota y temas para repasar.
+
+Ver [`docs/ia/Tutor_IA.md`](docs/ia/Tutor_IA.md).
 
 La interfaz usa los colores institucionales y el logosímbolo del Manual de Identidad
 Corporativa de la UTB (verde Pantone 277-2C y azul Pantone 184-1C).
@@ -24,8 +32,8 @@ Corporativa de la UTB (verde Pantone 277-2C y azul Pantone 184-1C).
 
 ## Estado de este repositorio
 
-Los 13 requerimientos funcionales del documento (RF-01 a RF-13) y los 3 del Tutor IA
-(RF-14 a RF-16) están implementados en el backend y en el frontend:
+Los 13 requerimientos funcionales del documento (RF-01 a RF-13) y los 6 de IA
+(RF-14 a RF-19) están implementados en el backend y en el frontend:
 
 - **Backend:** pruebas automáticas que recorren los criterios de aceptación contra un
   PostgreSQL real (`npm run test:e2e`), más pruebas rápidas sin base de datos (`npm test`).
@@ -58,7 +66,7 @@ Estudiante / Administrador
                                           ├──► Almacenamiento de archivos (local en
                                           │    desarrollo; /uploads en el backend)
                                           │
-                                          └──► API de Claude (Anthropic): Tutor IA
+                                          └──► IA: Google Gemini (gratuita) o Claude
 ```
 
 Ver los diagramas completos en [`docs/diagramas/`](docs/diagramas/) (casos de uso,
@@ -96,6 +104,9 @@ clases, está en [`backend/src/db/schema.sql`](backend/src/db/schema.sql).
 | RF-14 | Explicación del material con IA | `POST /api/materiales/:id/ia/explicacion` | Ficha › Tutor IA › Explicación |
 | RF-15 | Práctica con preguntas generadas por IA | `POST /api/materiales/:id/ia/practica` | Ficha › Tutor IA › Practicar |
 | RF-16 | Preguntas al Tutor IA | `POST /api/materiales/:id/ia/preguntas` | Ficha › Tutor IA › Preguntar |
+| RF-17 | Revisión automática del material al subirlo | `POST /api/materiales` (campo `revision_ia`, estado `pendiente`) | Subir material, Mis aportes, Administración |
+| RF-18 | Simulacro de parcial con IA | `POST /api/asignaturas/:id/ia/simulacro` | Simulacro IA |
+| RF-19 | Vista previa del material | campo `miniatura_url` | Tarjetas y ficha |
 | RNF-08 | Transparencia y uso responsable de la IA | aviso «Generado con IA», `GET /api/ia/estado` | Panel Tutor IA |
 
 Pendientes: **RNF-02** (medir que el 95 % de las búsquedas responda en menos de 3 s con
@@ -125,11 +136,16 @@ npm run datos-prueba        # opcional: asignaturas, estudiantes y materiales de
 npm run dev                 # http://localhost:4000
 ```
 
-**Tutor IA.** Cree una clave en <https://platform.claude.com> (API Keys) y péguela en
-`backend/.env` como `ANTHROPIC_API_KEY=sk-ant-...`; luego reinicie el backend. La clave
-nunca se sube a GitHub (`.env` está en `.gitignore`). Sin clave, la plataforma funciona
-igual y el panel indica que el Tutor IA no está configurado. Detalles, costo y reglas
-R-10 a R-13 en [`docs/ia/Tutor_IA.md`](docs/ia/Tutor_IA.md).
+**IA gratuita.** Cree una clave sin costo en <https://aistudio.google.com/apikey> y péguela
+en `backend/.env` como `GEMINI_API_KEY=...`; luego reinicie el backend. La clave nunca se
+sube a GitHub (`.env` está en `.gitignore`). En el nivel gratuito, Google puede usar lo que
+se envía para mejorar sus productos y hay límites de uso. Sin clave, la plataforma funciona
+igual, pero sin IA. Detalles y reglas R-10 a R-15 en [`docs/ia/Tutor_IA.md`](docs/ia/Tutor_IA.md).
+
+**Material para probar.** `npm run datos-prueba` carga 5 parciales y talleres con
+ejercicios resueltos. En [`docs/material-de-prueba/`](docs/material-de-prueba/) hay
+archivos para probar la revisión al subir: dos que la IA debería aprobar, uno de otra
+asignatura, uno que no es académico y una imagen.
 
 El registro público siempre crea estudiantes; `npm run crear-admin` crea el primer
 administrador (o promueve una cuenta existente si el correo ya está registrado). Desde
@@ -161,8 +177,8 @@ npm test            # sin base de datos: control de acceso por rol y validacione
 npm run test:e2e    # contra PostgreSQL: recorre los criterios de aceptación de RF-01 a RF-16
 ```
 
-Las pruebas del Tutor IA usan un cliente de IA falso: no llaman a la API real ni gastan
-crédito.
+Las pruebas de IA usan un proveedor falso: nunca llaman a la API real, aunque
+`backend/.env` tenga una clave.
 
 `npm run test:e2e` usa la base configurada en `.env`, pero trabaja dentro de un esquema
 temporal que se elimina al terminar, así que no modifica los datos de desarrollo.
@@ -216,7 +232,7 @@ plataforma-apoyo-academico/
 │   │   ├── db/              # schema.sql, migración y creación del primer administrador
 │   │   ├── middleware/      # autenticación, roles, subida de archivos, errores
 │   │   ├── controllers/     # lógica de cada recurso (auth, materiales, ia, ...)
-│   │   ├── services/        # tutorIa.js: conexión con la API de Claude
+│   │   ├── services/        # tutorIa.js, proveedoresIa.js (Gemini/Claude), miniaturas.js
 │   │   └── routes/          # definición de endpoints
 │   └── test/                # pruebas de la API (npm test, npm run test:e2e)
 ├── frontend/                # cliente Flutter Web
@@ -243,6 +259,6 @@ plataforma-apoyo-academico/
 3. Elegir dónde desplegar la plataforma (RNF-06) y definir `JWT_SECRET` propio en ese
    entorno (con `NODE_ENV=production` la API no arranca sin él).
 4. Habilitar el acceso del docente al repositorio si se mantiene privado.
-5. Configurar la clave del Tutor IA y probarlo con material real: revisar con un docente de
-   cada asignatura que las explicaciones sean correctas, y con estudiantes que les sirvan
-   (RF-14 a RF-16, RNF-08). Registrar el costo y el tiempo de respuesta.
+5. Configurar la clave gratuita de Gemini y probar la IA con material real: revisar con un
+   docente que las explicaciones y el criterio de la revisión sean correctos, contar los
+   falsos rechazos y validar con estudiantes (RF-14 a RF-19, RNF-08).
