@@ -9,10 +9,15 @@ async function listar(req, res, next) {
   try {
     const incluirInactivas =
       req.query.incluir_inactivas === 'true' && req.usuario.rol === 'administrador';
+    // total_materiales: material visible para los estudiantes (para el panel de inicio).
     const { rows } = await pool.query(
-      `SELECT * FROM asignaturas
-       ${incluirInactivas ? '' : 'WHERE activo'}
-       ORDER BY nombre ASC`
+      `SELECT a.*,
+              (SELECT COUNT(*) FROM materiales m
+                WHERE m.asignatura_id = a.id
+                  AND m.estado IN ('publicado', 'reportado', 'en_revision'))::int AS total_materiales
+       FROM asignaturas a
+       ${incluirInactivas ? '' : 'WHERE a.activo'}
+       ORDER BY a.nombre ASC`
     );
     return res.json(rows);
   } catch (err) {

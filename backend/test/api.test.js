@@ -1,6 +1,9 @@
 // Pruebas rápidas de la API que NO necesitan base de datos: control de acceso
 // (RNF-04) y validaciones que responden antes de consultar PostgreSQL.
 // Uso: npm test
+// Las pruebas nunca usan una IA real, aunque backend/.env tenga una clave.
+process.env.GEMINI_API_KEY = '';
+process.env.ANTHROPIC_API_KEY = '';
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 

@@ -19,6 +19,10 @@ const ESQUEMA = `test_${Date.now()}`;
 // Todas las conexiones del backend (y del script crear-admin) usan el esquema temporal.
 process.env.PGOPTIONS = `-c search_path=${ESQUEMA}`;
 process.env.UPLOADS_DIR = 'uploads-test';
+// Las pruebas nunca usan una IA real, aunque backend/.env tenga una clave: sin
+// proveedor falso, la plataforma se comporta como si no hubiera IA configurada.
+process.env.GEMINI_API_KEY = '';
+process.env.ANTHROPIC_API_KEY = '';
 
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
@@ -81,6 +85,7 @@ async function pedir(metodo, ruta, { token, body } = {}) {
 }
 
 async function subir(token, campos, { tipo = 'application/pdf', nombre = 'parcial.pdf', contenido = '%PDF-1.4 prueba' } = {}) {
+  // contenido puede ser texto o un Buffer (un PDF real, para probar la vista previa).
   const form = new FormData();
   for (const [k, v] of Object.entries(campos)) form.append(k, String(v));
   form.append('archivo', new Blob([contenido], { type: tipo }), nombre);
@@ -415,31 +420,29 @@ test('RF-10: el administrador revisa los reportes y cambia su estado', async () 
   assert.equal(inexistente.status, 404);
 });
 
-// Cliente falso de la API de Claude: registra cada petición y devuelve la
-// respuesta que la prueba prepare, sin llamar a Internet ni gastar créditos.
+// Proveedor de IA falso: registra cada petición y devuelve la respuesta que la
+// prueba prepare, sin llamar a Internet ni gastar la cuota de la API.
 const iaFalsa = {
+  nombre: 'falsa',
+  modelo: 'modelo-de-prueba',
   peticiones: [],
   respuesta: null,
-  beta: {
-    messages: {
-      create: async (params) => {
-        iaFalsa.peticiones.push(params);
-        return iaFalsa.respuesta(params);
-      },
-    },
+  async generar(params) {
+    iaFalsa.peticiones.push(params);
+    return iaFalsa.respuesta(params);
   },
 };
-const textoIa = (texto, stop_reason = 'end_turn') => ({ stop_reason, content: [{ type: 'text', text: texto }] });
+const pdfDePrueba = fs.readFileSync(path.join(__dirname, '..', 'src', 'db', 'material-de-prueba', 'parcial-limites.pdf'));
 
 test('RF-14: el Tutor IA explica el material leyendo su PDF, y la explicación se reutiliza', async () => {
-  tutor.usarCliente(iaFalsa);
+  tutor.usarProveedor(iaFalsa);
   const explicacion = {
     resumen: 'Parcial de límites y derivadas.',
     temas: [{ nombre: 'Límites', explicacion: 'Un límite...', ejemplo: 'lim x→2 de x^2 = 4' }],
     ejercicios: [{ enunciado: 'Calcule lim x→0 sen(x)/x', pista: 'Límite notable', solucion: 'Es 1.' }],
     consejos: ['Repase los límites notables.'],
   };
-  iaFalsa.respuesta = () => textoIa(JSON.stringify(explicacion));
+  iaFalsa.respuesta = () => JSON.stringify(explicacion);
 
   const primera = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/explicacion`, { token: t.beto });
   assert.equal(primera.status, 201);
@@ -447,15 +450,14 @@ test('RF-14: el Tutor IA explica el material leyendo su PDF, y la explicación s
   assert.equal(primera.body.fuente, 'archivo');
   assert.equal(primera.body.guardado, false);
 
-  // La petición lleva el PDF como documento, los datos del material y el esquema de salida.
+  // La petición lleva el PDF, los datos del material y el esquema de salida.
   const peticion = iaFalsa.peticiones.at(-1);
-  const contenido = peticion.messages[0].content;
-  assert.equal(contenido[0].type, 'document');
-  assert.equal(contenido[0].source.media_type, 'application/pdf');
-  assert.equal(Buffer.from(contenido[0].source.data, 'base64').toString(), '%PDF-1.4 prueba');
-  assert.ok(contenido[1].text.includes('Parcial 1 de Cálculo'));
-  assert.ok(contenido[1].text.includes('Prof. Ruiz'));
-  assert.equal(peticion.output_config.format.type, 'json_schema');
+  const partes = peticion.mensajes[0].partes;
+  assert.equal(partes[0].archivo.mimeType, 'application/pdf');
+  assert.equal(Buffer.from(partes[0].archivo.base64, 'base64').toString(), '%PDF-1.4 prueba');
+  assert.ok(partes[1].texto.includes('Parcial 1 de Cálculo'));
+  assert.ok(partes[1].texto.includes('Prof. Ruiz'));
+  assert.ok(peticion.esquema.properties.temas);
   // R-08: el nombre de quien subió un material anónimo tampoco se envía a la IA.
   assert.ok(!JSON.stringify(peticion).includes('Ana Estudiante'));
 
@@ -468,7 +470,7 @@ test('RF-14: el Tutor IA explica el material leyendo su PDF, y la explicación s
   assert.equal(iaFalsa.peticiones.length, antes);
 
   // Con { nueva: true } se genera otra vez y reemplaza la guardada.
-  iaFalsa.respuesta = () => textoIa(JSON.stringify({ ...explicacion, resumen: 'Otra versión.' }));
+  iaFalsa.respuesta = () => JSON.stringify({ ...explicacion, resumen: 'Otra versión.' });
   const nueva = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/explicacion`, {
     token: t.ana, body: { nueva: true },
   });
@@ -478,12 +480,12 @@ test('RF-14: el Tutor IA explica el material leyendo su PDF, y la explicación s
 });
 
 test('RF-15: el Tutor IA genera preguntas de práctica y descarta las inválidas', async () => {
-  iaFalsa.respuesta = () => textoIa(JSON.stringify({
+  iaFalsa.respuesta = () => JSON.stringify({
     preguntas: [
-      { enunciado: '¿Cuánto es lim x→0 sen(x)/x?', opciones: ['0', '1', '∞', 'No existe'], correcta: 1, explicacion: 'Límite notable.' },
-      { enunciado: 'Pregunta con la respuesta fuera de rango', opciones: ['a', 'b'], correcta: 5, explicacion: '...' },
+      { enunciado: '¿Cuánto es lim x→0 sen(x)/x?', opciones: ['0', '1', '∞', 'No existe'], correcta: 1, explicacion: 'Límite notable.', tema: 'Límites notables' },
+      { enunciado: 'Pregunta con la respuesta fuera de rango', opciones: ['a', 'b'], correcta: 5, explicacion: '...', tema: 'x' },
     ],
-  }));
+  });
   const res = await pedir('POST', `/api/materiales/${t.tallerFisica}/ia/practica`, { token: t.ana });
   assert.equal(res.status, 201);
   assert.equal(res.body.contenido.preguntas.length, 1);
@@ -491,7 +493,7 @@ test('RF-15: el Tutor IA genera preguntas de práctica y descarta las inválidas
 });
 
 test('RF-16: el estudiante conversa con el Tutor IA sobre el material', async () => {
-  iaFalsa.respuesta = () => textoIa('Primero factorice el numerador.');
+  iaFalsa.respuesta = () => 'Primero factorice el numerador.';
   const res = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/preguntas`, {
     token: t.ana,
     body: {
@@ -506,16 +508,18 @@ test('RF-16: el estudiante conversa con el Tutor IA sobre el material', async ()
   assert.equal(res.body.respuesta, 'Primero factorice el numerador.');
   assert.equal(res.body.fuente, 'archivo');
 
-  const { messages } = iaFalsa.peticiones.at(-1);
-  assert.deepEqual(messages.slice(1).map((m) => m.role), ['user', 'assistant', 'user']);
-  assert.equal(messages.at(-1).content, '¿Cómo empiezo el punto 2?');
+  // Los turnos alternan: el material y la primera pregunta van juntos en el primer turno.
+  const { mensajes } = iaFalsa.peticiones.at(-1);
+  assert.deepEqual(mensajes.map((m) => m.rol), ['usuario', 'modelo', 'usuario']);
+  assert.equal(mensajes[0].partes.at(-1).texto, '¿De qué trata el parcial?');
+  assert.equal(mensajes.at(-1).partes[0].texto, '¿Cómo empiezo el punto 2?');
   // R-11: la conversación no se guarda en la base de datos.
   const { rows } = await pool.query('SELECT tipo FROM ia_contenidos');
   assert.ok(rows.every((r) => r.tipo !== 'preguntas'));
 });
 
 test('RF-16: el Tutor IA informa cuando declina responder o el material no existe', async () => {
-  iaFalsa.respuesta = () => textoIa('', 'refusal');
+  iaFalsa.respuesta = () => { throw new tutor.ErrorIa(422, 'La IA no puede responder esta solicitud.'); };
   const declinada = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/preguntas`, {
     token: t.ana, body: { pregunta: 'Algo que el modelo no responde' },
   });
@@ -526,9 +530,127 @@ test('RF-16: el Tutor IA informa cuando declina responder o el material no exist
   assert.equal(inexistente.status, 404);
 });
 
+const revisionIa = (cambios = {}) => JSON.stringify({
+  veredicto: 'aprobado',
+  motivo: 'Es un parcial de límites con soluciones.',
+  es_material_academico: true,
+  coincide_con_asignatura: true,
+  coincide_con_titulo: true,
+  legible: true,
+  contenido_inapropiado: false,
+  datos_personales: false,
+  tipo: 'parcial',
+  temas: ['Límites', 'Continuidad'],
+  dificultad: 'media',
+  resumen: 'Cinco ejercicios de límites y continuidad resueltos.',
+  ...cambios,
+});
+
+test('RF-17/RF-19: la IA aprueba el material al subirlo y se crea su vista previa', async () => {
+  iaFalsa.respuesta = () => revisionIa();
+  const res = await subir(t.beto, {
+    titulo: 'Parcial de límites 2026-2', asignatura_id: t.calculo,
+  }, { contenido: pdfDePrueba, nombre: 'parcial.pdf' });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.estado, 'publicado');
+  assert.equal(res.body.revision_ia.veredicto, 'aprobado');
+  assert.equal(res.body.revision_ia.tipo, 'parcial');
+  assert.deepEqual(res.body.revision_ia.temas, ['Límites', 'Continuidad']);
+  assert.equal(res.body.revision_ia.modelo, 'falsa:modelo-de-prueba');
+  // La revisión recibe el archivo y la asignatura elegida.
+  const peticion = iaFalsa.peticiones.at(-1);
+  assert.equal(peticion.mensajes[0].partes[0].archivo.mimeType, 'application/pdf');
+  assert.ok(peticion.mensajes[0].partes[1].texto.includes('Cálculo'));
+  // RF-19: la miniatura es un JPG en UPLOADS_DIR.
+  assert.match(res.body.miniatura_url, /^\/uploads\/.+-miniatura\.jpg$/);
+  const miniatura = await fetch(base + res.body.miniatura_url);
+  assert.equal(miniatura.status, 200);
+  assert.equal(miniatura.headers.get('content-type'), 'image/jpeg');
+  t.parcialAprobado = res.body.id;
+
+  // El tipo que identificó la IA sirve para filtrar el material.
+  const parciales = await pedir('GET', '/api/materiales?tipo=parcial', { token: t.ana });
+  assert.ok(parciales.body.some((m) => m.id === t.parcialAprobado));
+});
+
+test('RF-17/R-14: la IA rechaza lo que no es académico o no corresponde a la asignatura', async () => {
+  const antes = fs.readdirSync(uploadsDir).length;
+  for (const cambios of [
+    { es_material_academico: false, veredicto: 'rechazado', motivo: 'Es publicidad de una pizzería.' },
+    // Aunque el modelo diga «aprobado», el servidor rechaza si no coincide la asignatura.
+    { coincide_con_asignatura: false, motivo: 'Es una guía de química, no de Cálculo.' },
+    { legible: false },
+    { contenido_inapropiado: true },
+  ]) {
+    iaFalsa.respuesta = () => revisionIa(cambios);
+    const res = await subir(t.beto, { titulo: 'Material', asignatura_id: t.calculo });
+    assert.equal(res.status, 422, JSON.stringify(cambios));
+    assert.equal(res.body.revision.veredicto, 'rechazado');
+    assert.ok(res.body.error.startsWith('La IA no aprobó el material'));
+  }
+  // El archivo rechazado no queda en el servidor ni en la base de datos.
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(fs.readdirSync(uploadsDir).length, antes);
+  const { rows } = await pool.query(`SELECT 1 FROM materiales WHERE titulo = 'Material'`);
+  assert.equal(rows.length, 0);
+});
+
+test('RF-17: el material dudoso queda pendiente y solo lo ven su autor y el administrador', async () => {
+  iaFalsa.respuesta = () => revisionIa({ coincide_con_titulo: false, motivo: 'El título no describe el contenido.' });
+  const res = await subir(t.beto, { titulo: 'Cosas varias', asignatura_id: t.calculo });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.estado, 'pendiente');
+  const pendiente = res.body.id;
+
+  const listaAna = await pedir('GET', '/api/materiales', { token: t.ana });
+  assert.ok(!listaAna.body.some((m) => m.id === pendiente), 'otro estudiante no lo ve');
+  assert.equal((await pedir('GET', `/api/materiales/${pendiente}`, { token: t.ana })).status, 404);
+
+  const mios = await pedir('GET', '/api/materiales?mios=true', { token: t.beto });
+  const propio = mios.body.find((m) => m.id === pendiente);
+  assert.ok(propio, 'su autor lo ve en «Mis aportes»');
+  assert.equal(propio.es_mio, true);
+  assert.equal(propio.revision_ia.motivo, 'El título no describe el contenido.');
+  assert.ok(mios.body.every((m) => m.es_mio));
+
+  const admin = await pedir('GET', '/api/materiales?estado=pendiente', { token: t.admin });
+  assert.ok(admin.body.some((m) => m.id === pendiente));
+  // El administrador lo aprueba y queda visible para todos.
+  await pedir('PUT', `/api/materiales/${pendiente}`, { token: t.admin, body: { estado: 'publicado' } });
+  assert.equal((await pedir('GET', `/api/materiales/${pendiente}`, { token: t.ana })).status, 200);
+
+  // Si la IA falla, el material no se pierde: queda pendiente para el administrador.
+  iaFalsa.respuesta = () => { throw new tutor.ErrorIa(429, 'Se alcanzó el límite gratuito de la IA por ahora.'); };
+  const sinIa = await subir(t.beto, { titulo: 'Parcial subido sin IA', asignatura_id: t.calculo });
+  assert.equal(sinIa.status, 201);
+  assert.equal(sinIa.body.estado, 'pendiente');
+  assert.ok(sinIa.body.revision_ia.motivo.includes('límite gratuito'));
+});
+
+test('RF-18: simulacro de parcial con el material de la asignatura', async () => {
+  iaFalsa.respuesta = () => JSON.stringify({
+    preguntas: [
+      { enunciado: '¿Cuánto es lim x→2 (x^2 - 4)/(x - 2)?', opciones: ['0', '2', '4', 'No existe'], correcta: 2, explicacion: 'Se factoriza.', tema: 'Límites' },
+    ],
+  });
+  const res = await pedir('POST', `/api/asignaturas/${t.calculo}/ia/simulacro`, {
+    token: t.ana, body: { preguntas: 5 },
+  });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.contenido.preguntas.length, 1);
+  assert.ok(res.body.materiales_usados >= 1);
+  const peticion = iaFalsa.peticiones.at(-1);
+  assert.ok(peticion.mensajes[0].partes.at(-1).texto.includes('simulacro de parcial de 5 preguntas'));
+  // Solo usa material publicado: el pendiente no se envía.
+  assert.ok(!JSON.stringify(peticion).includes('Parcial subido sin IA'));
+
+  const sinMaterial = await pedir('POST', `/api/asignaturas/${t.quimica}/ia/simulacro`, { token: t.ana });
+  assert.ok([404, 409].includes(sinMaterial.status));
+});
+
 test('R-13: cada usuario tiene un límite de consultas nuevas al Tutor IA por hora', async () => {
   iaCtrl.reiniciarLimites();
-  iaFalsa.respuesta = () => textoIa('Respuesta.');
+  iaFalsa.respuesta = () => 'Respuesta.';
   for (let i = 0; i < iaCtrl.LIMITE_POR_HORA; i += 1) {
     const res = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/preguntas`, {
       token: t.beto, body: { pregunta: `Pregunta ${i}` },
@@ -547,6 +669,7 @@ test('R-13: cada usuario tiene un límite de consultas nuevas al Tutor IA por ho
   const guardada = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/explicacion`, { token: t.beto });
   assert.equal(guardada.status, 200);
   iaCtrl.reiniciarLimites();
+  tutor.usarProveedor(null);
 });
 
 test('RF-12: el administrador edita, retira y elimina material', async () => {

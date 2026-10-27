@@ -43,7 +43,7 @@ function responderError(err, res, next) {
 
 /** Indica a la aplicación si el Tutor IA está configurado, para mostrarlo o no. */
 function estado(req, res) {
-  res.json({ disponible: tutor.disponible(), modelo: tutor.MODELO, limite_por_hora: LIMITE_POR_HORA });
+  res.json({ disponible: tutor.disponible(), modelo: tutor.modeloActivo(), limite_por_hora: LIMITE_POR_HORA });
 }
 
 /**
@@ -73,7 +73,7 @@ function contenidoGuardado(tipo, generar) {
            SET contenido = EXCLUDED.contenido, fuente = EXCLUDED.fuente,
                modelo = EXCLUDED.modelo, creado_en = now()
          RETURNING contenido, fuente, creado_en`,
-        [material.id, tipo, contenido, fuente, tutor.MODELO],
+        [material.id, tipo, contenido, fuente, tutor.modeloActivo()],
       );
       return res.status(201).json({ ...rows[0], guardado: false });
     } catch (err) {
@@ -119,4 +119,41 @@ function reiniciarLimites() {
   consultasPorUsuario.clear();
 }
 
-module.exports = { estado, explicacion, practica, preguntar, reiniciarLimites, LIMITE_POR_HORA };
+/**
+ * RF-18: simulacro de parcial de una asignatura, con preguntas basadas en su
+ * material publicado. No se guarda: cada simulacro es distinto y cuenta para el
+ * límite por hora (R-13).
+ */
+async function simulacro(req, res, next) {
+  try {
+    const { rows: asignaturas } = await pool.query(
+      'SELECT * FROM asignaturas WHERE id = $1 AND activo', [req.params.asignatura_id],
+    );
+    const asignatura = asignaturas[0];
+    if (!asignatura) return res.status(404).json({ error: 'Asignatura no encontrada.' });
+    const { rows: materiales } = await pool.query(
+      `SELECT titulo, descripcion, archivo_url FROM materiales
+       WHERE asignatura_id = $1 AND estado = 'publicado'
+       ORDER BY fecha_publicacion DESC LIMIT 5`,
+      [asignatura.id],
+    );
+    if (!materiales.length) {
+      return res.status(409).json({
+        error: 'Esta asignatura todavía no tiene material publicado para armar un simulacro.',
+      });
+    }
+    const pedidas = Number(req.body?.preguntas);
+    const numero = [5, 10, 15].includes(pedidas) ? pedidas : 10;
+
+    tutor.verificarConfiguracion();
+    registrarConsulta(req.usuario.id);
+    const resultado = await tutor.simulacro(asignatura, materiales, numero);
+    return res.json({ asignatura: { id: asignatura.id, nombre: asignatura.nombre }, ...resultado });
+  } catch (err) {
+    return responderError(err, res, next);
+  }
+}
+
+module.exports = {
+  estado, explicacion, practica, preguntar, simulacro, reiniciarLimites, LIMITE_POR_HORA,
+};

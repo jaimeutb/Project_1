@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS materiales (
     usuario_id          INTEGER      NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
     creado_en           TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
+-- RF-17: «pendiente» = la IA no pudo aprobarlo por sí sola y espera a un administrador.
+-- Solo lo ven quien lo subió y el administrador.
+ALTER TABLE materiales DROP CONSTRAINT IF EXISTS materiales_estado_check;
+ALTER TABLE materiales ADD CONSTRAINT materiales_estado_check
+    CHECK (estado IN ('publicado', 'reportado', 'en_revision', 'retirado', 'pendiente'));
+-- RF-19: vista previa (primera página del PDF o la imagen reducida).
+ALTER TABLE materiales ADD COLUMN IF NOT EXISTS miniatura_url VARCHAR(500);
+-- RF-17: resultado de la revisión automática (veredicto, motivo, tipo, temas,
+-- dificultad, resumen y criterios). NULL si se publicó sin IA configurada.
+ALTER TABLE materiales ADD COLUMN IF NOT EXISTS revision_ia JSONB;
 CREATE INDEX IF NOT EXISTS idx_materiales_asignatura ON materiales(asignatura_id);
 CREATE INDEX IF NOT EXISTS idx_materiales_estado ON materiales(estado);
 
