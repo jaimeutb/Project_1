@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../state/session.dart';
+import '../theme/utb_theme.dart';
+import '../widgets/pantalla_acceso.dart';
 import 'home_screen.dart';
 import 'register_screen.dart';
 
@@ -53,63 +55,58 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 380),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Plataforma de Apoyo Académico',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 24),
-                  TextFormField(
-                    controller: _correoCtrl,
-                    decoration: const InputDecoration(labelText: 'Correo'),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? 'Ingrese su correo.' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _contrasenaCtrl,
-                    decoration: const InputDecoration(labelText: 'Contraseña'),
-                    obscureText: true,
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? 'Ingrese su contraseña.' : null,
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
-                  ],
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: _cargando ? null : _iniciarSesion,
-                    child: _cargando
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Iniciar sesión'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                    ),
-                    child: const Text('¿No tiene cuenta? Regístrese'),
-                  ),
-                ],
+    return PantallaAcceso(
+      titulo: 'Bienvenido',
+      subtitulo: 'Ingresa para estudiar con el material de tus compañeros y el Tutor IA.',
+      formulario: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextFormField(
+              controller: _correoCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Correo',
+                prefixIcon: Icon(Icons.mail_outline),
               ),
+              keyboardType: TextInputType.emailAddress,
+              validator: (v) =>
+                  (v == null || v.isEmpty) ? 'Ingrese su correo.' : null,
             ),
-          ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _contrasenaCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Contraseña',
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
+              obscureText: true,
+              onFieldSubmitted: (_) => _iniciarSesion(),
+              validator: (v) =>
+                  (v == null || v.isEmpty) ? 'Ingrese su contraseña.' : null,
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!, style: const TextStyle(color: UtbColores.error)),
+            ],
+            const SizedBox(height: 22),
+            FilledButton(
+              onPressed: _cargando ? null : _iniciarSesion,
+              child: _cargando
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Iniciar sesión'),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const RegisterScreen()),
+              ),
+              child: const Text('¿No tiene cuenta? Regístrese'),
+            ),
+          ],
         ),
       ),
     );

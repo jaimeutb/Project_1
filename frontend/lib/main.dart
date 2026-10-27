@@ -5,6 +5,8 @@ import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
 import 'state/session.dart';
+import 'theme/utb_theme.dart';
+import 'widgets/logo_utb.dart';
 
 void main() {
   runApp(
@@ -23,10 +25,8 @@ class PlataformaApoyoAcademicoApp extends StatelessWidget {
     return MaterialApp(
       title: 'Plataforma de Apoyo Académico',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF2A78D6),
-        useMaterial3: true,
-      ),
+      // Colores y logo de la Universidad Tecnológica de Bolívar (lib/theme/utb_theme.dart).
+      theme: temaUtb(),
       home: const _ArranqueSesion(),
     );
   }
@@ -69,7 +69,18 @@ class _ArranqueSesionState extends State<_ArranqueSesion> {
   @override
   Widget build(BuildContext context) {
     if (_verificando) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LogoUtb(altura: 72),
+              SizedBox(height: 24),
+              CircularProgressIndicator(),
+            ],
+          ),
+        ),
+      );
     }
     final autenticado = context.watch<Session>().autenticado;
     return autenticado ? const HomeScreen() : const LoginScreen();

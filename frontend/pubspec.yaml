@@ -26,3 +26,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # Logosímbolo de la UTB (Manual de Identidad Corporativa, «Aplicaciones»).
+    - assets/utb/

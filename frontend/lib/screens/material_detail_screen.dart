@@ -8,6 +8,9 @@ import '../models/valoracion.dart';
 import '../services/api_client.dart';
 import '../services/material_service.dart';
 import '../state/session.dart';
+import '../theme/utb_theme.dart';
+import '../widgets/material_card.dart' show tipoDeArchivo;
+import '../widgets/tutor_ia_panel.dart';
 
 /// RF-05: visualización del material. Desde aquí también se descarga
 /// (RF-05), se valora (RF-08) y se reporta (RF-09).
@@ -75,7 +78,7 @@ class _MaterialDetailScreenState extends State<MaterialDetailScreen> {
                   return IconButton(
                     icon: Icon(
                       valor <= puntuacion ? Icons.star : Icons.star_border,
-                      color: Colors.amber,
+                      color: UtbColores.ambar,
                     ),
                     onPressed: () => setDialogState(() => puntuacion = valor),
                   );
@@ -139,73 +142,150 @@ class _MaterialDetailScreenState extends State<MaterialDetailScreen> {
       body: _cargando
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
+              ? Center(child: Text(_error!, style: const TextStyle(color: UtbColores.error)))
               : _material == null
                   ? const SizedBox.shrink()
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 640),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(_material!.asignaturaNombre,
-                                style: const TextStyle(color: Colors.black54)),
-                            const SizedBox(height: 8),
-                            if (_material!.descripcion != null)
-                              Text(_material!.descripcion!),
-                            const SizedBox(height: 12),
-                            Wrap(spacing: 16, runSpacing: 4, children: [
-                              _Info('Autor', _material!.autorVisible),
-                              if (_material!.profesor != null)
-                                _Info('Profesor', _material!.profesor!),
-                              if (_material!.periodoAcademico != null)
-                                _Info('Periodo', _material!.periodoAcademico!),
-                              _Info('Estado', _material!.estadoVisible),
-                              _Info('Calificación',
-                                  '${_material!.calificacionPromedio.toStringAsFixed(1)} (${_material!.totalValoraciones})'),
-                            ]),
-                            const SizedBox(height: 20),
-                            Wrap(spacing: 12, children: [
-                              FilledButton.icon(
-                                onPressed: _descargar,
-                                icon: const Icon(Icons.download),
-                                label: const Text('Descargar'),
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: _valorar,
-                                icon: const Icon(Icons.star_border),
-                                label: const Text('Valorar'),
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: _reportar,
-                                icon: const Icon(Icons.flag_outlined),
-                                label: const Text('Reportar'),
-                              ),
-                            ]),
-                            const Divider(height: 40),
-                            Text('Comentarios (${_valoraciones.length})',
-                                style: const TextStyle(fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 8),
-                            ..._valoraciones.map((v) => ListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: List.generate(
-                                      v.puntuacion,
-                                      (_) => const Icon(Icons.star,
-                                          size: 14, color: Colors.amber),
-                                    ),
-                                  ),
-                                  title: Text(v.comentario?.isNotEmpty == true
-                                      ? v.comentario!
-                                      : '(sin comentario)'),
-                                  subtitle: Text(v.autor),
-                                )),
-                          ],
+                  : LayoutBuilder(builder: (context, constraints) {
+                      final ficha = _fichaDelMaterial(_material!);
+                      final tutor = TutorIaPanel(materialId: widget.materialId, token: _token);
+                      final comentarios = _comentarios();
+                      // En pantallas anchas el Tutor IA va al lado de la ficha; en el
+                      // celular, debajo (RNF-03).
+                      final contenido = constraints.maxWidth >= 1000
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  flex: 5,
+                                  child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      children: [
+                                        ficha,
+                                        const SizedBox(height: 16),
+                                        comentarios,
+                                      ]),
+                                ),
+                                const SizedBox(width: 20),
+                                Expanded(flex: 6, child: tutor),
+                              ],
+                            )
+                          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                              ficha,
+                              const SizedBox(height: 16),
+                              tutor,
+                              const SizedBox(height: 16),
+                              comentarios,
+                            ]);
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1200),
+                            child: contenido,
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    }),
+    );
+  }
+
+  Widget _fichaDelMaterial(modelo.Material m) {
+    final (iconoArchivo, tipoArchivo) = tipoDeArchivo(m.archivoUrl);
+    return TarjetaUtb(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: UtbColores.verde10,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(iconoArchivo, color: UtbColores.verde, size: 28),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(m.asignaturaNombre,
+                        style: const TextStyle(
+                            color: UtbColores.azul, fontWeight: FontWeight.w700, fontSize: 13)),
+                    const SizedBox(height: 2),
+                    Text(m.titulo,
+                        style: const TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.w800, color: UtbColores.texto)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (m.descripcion != null && m.descripcion!.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(m.descripcion!, style: const TextStyle(height: 1.45)),
+          ],
+          const SizedBox(height: 16),
+          Wrap(spacing: 24, runSpacing: 12, children: [
+            _Info('Autor', m.autorVisible),
+            if (m.profesor != null) _Info('Profesor', m.profesor!),
+            if (m.periodoAcademico != null) _Info('Periodo', m.periodoAcademico!),
+            _Info('Estado', m.estadoVisible),
+            _Info('Calificación',
+                '${m.calificacionPromedio.toStringAsFixed(1)} (${m.totalValoraciones})'),
+            _Info('Archivo', tipoArchivo),
+          ]),
+          const SizedBox(height: 20),
+          Wrap(spacing: 10, runSpacing: 10, children: [
+            FilledButton.icon(
+              onPressed: _descargar,
+              icon: const Icon(Icons.download),
+              label: const Text('Descargar'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _valorar,
+              icon: const Icon(Icons.star_border),
+              label: const Text('Valorar'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _reportar,
+              icon: const Icon(Icons.flag_outlined),
+              label: const Text('Reportar'),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _comentarios() {
+    return TarjetaUtb(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Comentarios (${_valoraciones.length})',
+              style: const TextStyle(
+                  fontWeight: FontWeight.w800, fontSize: 16, color: UtbColores.azulOscuro)),
+          const SizedBox(height: 8),
+          if (_valoraciones.isEmpty)
+            const Text('Aún no hay comentarios. ¿Te sirvió? Valóralo para ayudar a otros.',
+                style: TextStyle(color: UtbColores.textoSecundario)),
+          ..._valoraciones.map((v) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(
+                    v.puntuacion,
+                    (_) => const Icon(Icons.star_rounded, size: 16, color: UtbColores.ambar),
+                  ),
+                ),
+                title: Text(v.comentario?.isNotEmpty == true ? v.comentario! : '(sin comentario)'),
+                subtitle: Text(v.autor),
+              )),
+        ],
+      ),
     );
   }
 }
@@ -270,7 +350,7 @@ class _Info extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(etiqueta, style: const TextStyle(fontSize: 11, color: Colors.black45)),
+        Text(etiqueta, style: const TextStyle(fontSize: 11, color: UtbColores.textoSecundario)),
         Text(valor, style: const TextStyle(fontWeight: FontWeight.w600)),
       ],
     );

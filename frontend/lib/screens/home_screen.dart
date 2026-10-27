@@ -8,6 +8,8 @@ import '../services/api_client.dart';
 import '../services/asignatura_service.dart';
 import '../services/material_service.dart';
 import '../state/session.dart';
+import '../theme/utb_theme.dart';
+import '../widgets/logo_utb.dart';
 import '../widgets/material_card.dart';
 import 'admin_asignaturas_screen.dart';
 import 'admin_materiales_screen.dart';
@@ -133,16 +135,28 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) _cargarAsignaturas();
   }
 
+  bool get _hayFiltros =>
+      _textoCtrl.text.isNotEmpty || _semestreSeleccionado != null || _asignaturaSeleccionada != null;
+
+  void _quitarFiltros() {
+    _textoCtrl.clear();
+    setState(() {
+      _semestreSeleccionado = null;
+      _asignaturaSeleccionada = null;
+    });
+    _buscar();
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = context.watch<Session>();
+    final anchoPantalla = MediaQuery.sizeOf(context).width;
 
     final buscador = TextField(
       controller: _textoCtrl,
       decoration: InputDecoration(
         prefixIcon: const Icon(Icons.search),
         hintText: 'Buscar por título, tema o asignatura…',
-        border: const OutlineInputBorder(),
         isDense: true,
         suffixIcon: IconButton(
           tooltip: 'Buscar',
@@ -160,11 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // ignore: deprecated_member_use
       value: _semestreSeleccionado,
       isExpanded: true,
-      decoration: const InputDecoration(
-        labelText: 'Semestre',
-        border: OutlineInputBorder(),
-        isDense: true,
-      ),
+      decoration: const InputDecoration(labelText: 'Semestre', isDense: true),
       items: [
         const DropdownMenuItem(value: null, child: Text('Todos')),
         ..._semestres.map((s) => DropdownMenuItem(value: s, child: Text(s))),
@@ -184,11 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // ignore: deprecated_member_use
       value: _asignaturaSeleccionada,
       isExpanded: true,
-      decoration: const InputDecoration(
-        labelText: 'Asignatura',
-        border: OutlineInputBorder(),
-        isDense: true,
-      ),
+      decoration: const InputDecoration(labelText: 'Asignatura', isDense: true),
       items: [
         const DropdownMenuItem(value: null, child: Text('Todas')),
         ..._asignaturasFiltradas.map(
@@ -204,9 +210,123 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
 
+    // RNF-03: en pantallas angostas (navegador móvil) los filtros se apilan.
+    final filtros = TarjetaUtb(
+      padding: const EdgeInsets.all(16),
+      child: LayoutBuilder(
+        builder: (context, constraints) => constraints.maxWidth >= 720
+            ? Row(
+                children: [
+                  Expanded(flex: 2, child: buscador),
+                  const SizedBox(width: 12),
+                  Expanded(child: filtroSemestre),
+                  const SizedBox(width: 12),
+                  Expanded(flex: 2, child: filtroAsignatura),
+                ],
+              )
+            : Column(
+                children: [
+                  buscador,
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(child: filtroSemestre),
+                      const SizedBox(width: 8),
+                      Expanded(flex: 2, child: filtroAsignatura),
+                    ],
+                  ),
+                ],
+              ),
+      ),
+    );
+
+    final encabezadoResultados = Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _cargando
+                  ? 'Buscando material…'
+                  : _materiales.length == 1
+                      ? '1 material'
+                      : '${_materiales.length} materiales',
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w800, color: UtbColores.azulOscuro),
+            ),
+          ),
+          if (_hayFiltros)
+            TextButton.icon(
+              onPressed: _quitarFiltros,
+              icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+              label: const Text('Quitar filtros'),
+            ),
+        ],
+      ),
+    );
+
+    // Las tarjetas se acomodan en 1, 2 o 3 columnas según el ancho, y la lista
+    // se construye por filas a medida que se desplaza (RNF-02 con mucho material).
+    final columnas = anchoPantalla >= 1100 ? 3 : anchoPantalla >= 720 ? 2 : 1;
+    final filas = (_materiales.length / columnas).ceil();
+    final margenLateral = anchoPantalla > 1240 ? (anchoPantalla - 1200) / 2 : 16.0;
+
+    final encabezado = <Widget>[
+      _BannerBienvenida(nombre: session.usuario?.nombre),
+      const SizedBox(height: 16),
+      filtros,
+      if (_error != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Text(_error!, style: const TextStyle(color: UtbColores.error)),
+        ),
+      encabezadoResultados,
+      if (_cargando)
+        const Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(child: CircularProgressIndicator()),
+        )
+      else if (_materiales.isEmpty)
+        const TarjetaUtb(
+          child: Column(
+            children: [
+              Icon(Icons.search_off, size: 40, color: UtbColores.textoSecundario),
+              SizedBox(height: 8),
+              Text('No se encontró material con estos criterios.', textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+    ];
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Plataforma de Apoyo Académico'),
+        toolbarHeight: 68,
+        titleSpacing: 16,
+        title: anchoPantalla >= 600
+            ? const Row(
+                children: [
+                  LogoUtb(altura: 46),
+                  SizedBox(width: 16),
+                  SizedBox(height: 32, child: VerticalDivider(width: 1)),
+                  SizedBox(width: 16),
+                  Flexible(child: Text('Apoyo Académico', overflow: TextOverflow.ellipsis)),
+                ],
+              )
+            : const Row(
+                children: [
+                  LogoUtb(altura: 34, soloSimbolo: true),
+                  SizedBox(width: 10),
+                  Flexible(child: Text('Apoyo Académico', overflow: TextOverflow.ellipsis)),
+                ],
+              ),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(3),
+          child: SizedBox(
+            height: 3,
+            width: double.infinity,
+            child: DecoratedBox(decoration: BoxDecoration(gradient: UtbColores.degradado)),
+          ),
+        ),
         actions: [
           if (session.esAdministrador)
             PopupMenuButton<Widget>(
@@ -214,7 +334,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onSelected: _abrirAdministracion,
               // En pantallas anchas el menú muestra su nombre para que se encuentre
               // fácilmente; en el celular queda solo el ícono para ahorrar espacio.
-              child: MediaQuery.sizeOf(context).width >= 600
+              child: anchoPantalla >= 600
                   ? const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       child: Row(
@@ -261,6 +381,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
+          const SizedBox(width: 8),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -268,57 +389,130 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: const Icon(Icons.upload_file),
         label: const Text('Subir material'),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            // RNF-03: en pantallas angostas (navegador móvil) los filtros se apilan.
-            child: LayoutBuilder(
-              builder: (context, constraints) => constraints.maxWidth >= 720
-                  ? Row(
-                      children: [
-                        Expanded(flex: 2, child: buscador),
-                        const SizedBox(width: 12),
-                        Expanded(child: filtroSemestre),
-                        const SizedBox(width: 12),
-                        Expanded(flex: 2, child: filtroAsignatura),
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        buscador,
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(child: filtroSemestre),
-                            const SizedBox(width: 8),
-                            Expanded(flex: 2, child: filtroAsignatura),
-                          ],
-                        ),
-                      ],
+      body: ListView.builder(
+        // Espacio al final para que el botón flotante no tape la última tarjeta.
+        padding: EdgeInsets.fromLTRB(margenLateral, 16, margenLateral, 96),
+        itemCount: encabezado.length + (_cargando ? 0 : filas),
+        itemBuilder: (context, i) {
+          if (i < encabezado.length) return encabezado[i];
+          final inicio = (i - encabezado.length) * columnas;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var c = 0; c < columnas; c++) ...[
+                    if (c > 0) const SizedBox(width: 12),
+                    Expanded(
+                      child: inicio + c < _materiales.length
+                          ? MaterialCard(
+                              material: _materiales[inicio + c],
+                              onTap: () => _abrirDetalle(_materiales[inicio + c]),
+                            )
+                          : const SizedBox.shrink(),
                     ),
+                  ],
+                ],
+              ),
             ),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Bienvenida con la propuesta del Tutor IA: invita a abrir un material.
+class _BannerBienvenida extends StatelessWidget {
+  final String? nombre;
+  const _BannerBienvenida({required this.nombre});
+
+  @override
+  Widget build(BuildContext context) {
+    final ancho = MediaQuery.sizeOf(context).width >= 720;
+    final primerNombre = nombre?.trim().split(' ').first ?? '';
+    return Container(
+      padding: EdgeInsets.all(ancho ? 28 : 20),
+      decoration: BoxDecoration(
+        gradient: UtbColores.degradado,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
           Expanded(
-            child: _cargando
-                ? const Center(child: CircularProgressIndicator())
-                : _materiales.isEmpty
-                    ? const Center(child: Text('No se encontró material con estos criterios.'))
-                    : ListView.builder(
-                        // Espacio al final para que el botón flotante no tape la última tarjeta.
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 80),
-                        itemCount: _materiales.length,
-                        itemBuilder: (context, i) => MaterialCard(
-                          material: _materiales[i],
-                          onTap: () => _abrirDetalle(_materiales[i]),
-                        ),
-                      ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  primerNombre.isEmpty ? 'Hola' : 'Hola, $primerNombre',
+                  style: const TextStyle(color: Color(0xCCFFFFFF), fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Prepárate para tus parciales con el Tutor IA',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: ancho ? 26 : 20,
+                    height: 1.15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Abre cualquier material: el tutor te lo explica, te hace un quiz y '
+                  'resuelve tus dudas paso a paso.',
+                  style: TextStyle(color: Color(0xE6FFFFFF), height: 1.4),
+                ),
+                const SizedBox(height: 14),
+                const Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _PildoraBanner(Icons.lightbulb_outline, 'Explicaciones'),
+                    _PildoraBanner(Icons.quiz_outlined, 'Quices de práctica'),
+                    _PildoraBanner(Icons.forum_outlined, 'Resuelve dudas'),
+                  ],
+                ),
+              ],
+            ),
           ),
+          if (ancho) ...[
+            const SizedBox(width: 24),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const LogoUtb(altura: 88, soloSimbolo: true),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PildoraBanner extends StatelessWidget {
+  final IconData icono;
+  final String texto;
+  const _PildoraBanner(this.icono, this.texto);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0x26FFFFFF),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icono, size: 15, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(texto, style: const TextStyle(color: Colors.white, fontSize: 12)),
         ],
       ),
     );
@@ -468,12 +662,12 @@ class _DialogoSubirMaterialState extends State<DialogoSubirMaterial> {
                   padding: EdgeInsets.only(top: 4),
                   child: Text(
                     textoArchivosPermitidos,
-                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                    style: TextStyle(fontSize: 12, color: UtbColores.textoSecundario),
                   ),
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 8),
-                  Text(_error!, style: const TextStyle(color: Colors.red)),
+                  Text(_error!, style: const TextStyle(color: UtbColores.error)),
                 ],
               ],
             ),

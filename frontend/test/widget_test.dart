@@ -22,6 +22,7 @@ import 'package:plataforma_apoyo_academico/screens/home_screen.dart';
 import 'package:plataforma_apoyo_academico/screens/material_detail_screen.dart';
 import 'package:plataforma_apoyo_academico/state/session.dart';
 import 'package:plataforma_apoyo_academico/widgets/material_card.dart';
+import 'package:plataforma_apoyo_academico/widgets/tutor_ia_panel.dart';
 
 modelo.Material _material({required String estado, bool anonimo = false}) {
   return modelo.Material.fromJson(_materialJson(estado: estado, anonimo: anonimo));
@@ -361,6 +362,198 @@ void main() {
         '${local.month.toString().padLeft(2, '0')}/${local.year} '
         '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
     expect(fechaDeReporte(r.creadoEn), esperado);
+  });
+
+  // ------------------------------------------------------------ Tutor IA
+
+  /// API falsa del Tutor IA: responde según la ruta y guarda los cuerpos enviados.
+  MockClient apiTutor({required bool disponible, List<Map<String, dynamic>>? enviados}) {
+    return MockClient((request) async {
+      final ruta = request.url.path;
+      if (request.body.isNotEmpty) enviados?.add(jsonDecode(request.body));
+      if (ruta == '/api/ia/estado') {
+        return _json({'disponible': disponible, 'modelo': 'claude-opus-5-5', 'limite_por_hora': 20});
+      }
+      if (ruta == '/api/materiales/1/ia/explicacion') {
+        return _json({
+          'fuente': 'archivo',
+          'guardado': false,
+          'contenido': {
+            'resumen': 'Parcial de límites y continuidad.',
+            'temas': [
+              {'nombre': 'Límites notables', 'explicacion': 'Son límites que conviene memorizar.', 'ejemplo': 'lim x→0 sen(x)/x = 1'},
+            ],
+            'ejercicios': [
+              {'enunciado': 'Calcule lim x→2 (x^2 - 4)/(x - 2)', 'pista': 'Factorice el numerador.', 'solucion': 'Se simplifica a x + 2, así que el límite es 4.'},
+            ],
+            'consejos': ['Practique la factorización.'],
+          },
+        }, 201);
+      }
+      if (ruta == '/api/materiales/1/ia/practica') {
+        return _json({
+          'fuente': 'metadatos',
+          'guardado': true,
+          'contenido': {
+            'preguntas': [
+              {'enunciado': '¿Cuánto es lim x→0 sen(x)/x?', 'opciones': ['0', '1', '∞', 'No existe'], 'correcta': 1, 'explicacion': 'Es un límite notable.'},
+            ],
+          },
+        });
+      }
+      if (ruta == '/api/materiales/1/ia/preguntas') {
+        final pregunta = jsonDecode(request.body)['pregunta'];
+        return _json({'fuente': 'archivo', 'respuesta': 'Respuesta del tutor a: $pregunta'});
+      }
+      return _json({'error': 'Ruta no esperada: ${request.method} $ruta'}, 404);
+    });
+  }
+
+  Widget panelTutor() => const MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(child: TutorIaPanel(materialId: 1, token: 'token')),
+        ),
+      );
+
+  testWidgets('RF-14: sin clave de IA en el servidor, el Tutor IA lo explica', (tester) async {
+    await http.runWithClient(() async {
+      await tester.pumpWidget(panelTutor());
+      await tester.pumpAndSettle();
+      expect(find.text('El Tutor IA no está configurado en este servidor'), findsOneWidget);
+      expect(find.text('Explicar este material'), findsNothing);
+    }, () => apiTutor(disponible: false));
+  });
+
+  testWidgets('RF-14: el Tutor IA explica el material y oculta la solución hasta pedirla',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await http.runWithClient(() async {
+      await tester.pumpWidget(panelTutor());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Explicar este material'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Parcial de límites y continuidad.'), findsOneWidget);
+      expect(find.text('Límites notables'), findsOneWidget);
+      expect(find.text('Calcule lim x→2 (x^2 - 4)/(x - 2)'), findsOneWidget);
+      expect(find.text('Se simplifica a x + 2, así que el límite es 4.'), findsNothing);
+
+      await tester.tap(find.text('Ver solución'));
+      await tester.pumpAndSettle();
+      expect(find.text('Se simplifica a x + 2, así que el límite es 4.'), findsOneWidget);
+      expect(find.textContaining('Generado con IA'), findsOneWidget);
+    }, () => apiTutor(disponible: true));
+  });
+
+  testWidgets('RF-15: el quiz marca la respuesta y muestra la explicación', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await http.runWithClient(() async {
+      await tester.pumpWidget(panelTutor());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Practicar'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Generar quiz'));
+      await tester.pumpAndSettle();
+
+      // R-12: la IA solo vio el título y la descripción, y la app lo avisa.
+      expect(find.text('La IA no pudo leer el archivo'), findsOneWidget);
+      expect(find.text('Respondidas: 0 de 1 · Correctas: 0'), findsOneWidget);
+      await tester.tap(find.text('0'));
+      await tester.pumpAndSettle();
+      expect(find.text('Incorrecto'), findsOneWidget);
+      expect(find.text('Es un límite notable.'), findsOneWidget);
+      expect(find.text('Respondidas: 1 de 1 · Correctas: 0'), findsOneWidget);
+      // Una pregunta respondida ya no cambia.
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Respondidas: 1 de 1 · Correctas: 0'), findsOneWidget);
+    }, () => apiTutor(disponible: true));
+  });
+
+  testWidgets('RF-16: el chat envía la pregunta con el historial de la conversación',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final enviados = <Map<String, dynamic>>[];
+
+    await http.runWithClient(() async {
+      await tester.pumpWidget(panelTutor());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Preguntar'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(sugerenciasTutor.first));
+      await tester.pumpAndSettle();
+      expect(find.text('Respuesta del tutor a: ${sugerenciasTutor.first}'), findsOneWidget);
+      expect(enviados.last['historial'], isEmpty);
+
+      await tester.enterText(find.byType(TextField), '¿Y el punto 2?');
+      await tester.tap(find.byTooltip('Enviar pregunta'));
+      await tester.pumpAndSettle();
+      expect(find.text('Respuesta del tutor a: ¿Y el punto 2?'), findsOneWidget);
+      expect(enviados.last['pregunta'], '¿Y el punto 2?');
+      expect(enviados.last['historial'], [
+        {'rol': 'estudiante', 'texto': sugerenciasTutor.first},
+        {'rol': 'tutor', 'texto': 'Respuesta del tutor a: ${sugerenciasTutor.first}'},
+      ]);
+    }, () => apiTutor(disponible: true, enviados: enviados));
+  });
+
+  testWidgets('RNF-03: la ficha del material con el Tutor IA cabe en un celular', (tester) async {
+    tester.view.physicalSize = const Size(360 * 3, 740 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    final api = MockClient((request) async {
+      final ruta = request.url.path;
+      if (ruta == '/api/materiales/1') return _json(_materialJson(estado: 'publicado'));
+      if (ruta == '/api/materiales/1/valoraciones') return _json([]);
+      if (ruta == '/api/ia/estado') return _json({'disponible': true, 'limite_por_hora': 20});
+      return _json({'error': 'Ruta no esperada'}, 404);
+    });
+
+    await http.runWithClient(() async {
+      final session = await sesionAdministrador();
+      await tester.pumpWidget(ChangeNotifierProvider.value(
+        value: session,
+        child: const MaterialApp(home: MaterialDetailScreen(materialId: 1)),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('Descargar'), findsOneWidget);
+      expect(find.text('Tutor IA'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Explicar este material'), 200);
+      expect(find.text('Explicar este material'), findsOneWidget);
+    }, () => api);
+  });
+
+  testWidgets('en escritorio, el inicio de sesión muestra el panel de la UTB', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(ChangeNotifierProvider(
+      create: (_) => Session(),
+      child: const PlataformaApoyoAcademicoApp(),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Plataforma de\nApoyo Académico'), findsOneWidget);
+    expect(find.text('Tutor IA'), findsOneWidget);
+    expect(find.text('Iniciar sesión'), findsOneWidget);
+  });
+
+  test('el tipo de archivo se reconoce por su extensión', () {
+    expect(tipoDeArchivo('/uploads/1.PDF').$2, 'PDF');
+    expect(tipoDeArchivo('/uploads/foto.jpeg').$2, 'Imagen');
+    expect(tipoDeArchivo('/uploads/taller.docx').$2, 'Word');
+    expect(tipoDeArchivo('/uploads/x.zip').$2, 'ZIP');
   });
 
   test('dos asignaturas con el mismo id son iguales (filtros del buscador)', () {

@@ -1,11 +1,11 @@
 {
-    "name": "Plataforma de Apoyo Académico",
+    "name": "Plataforma de Apoyo Académico · UTB",
     "short_name": "Apoyo Académico",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#FCFCFB",
-    "theme_color": "#2A78D6",
-    "description": "Plataforma de apoyo académico para estudiantes universitarios — proyecto de aula.",
+    "background_color": "#F5F6FA",
+    "theme_color": "#303990",
+    "description": "Material de estudio de la Universidad Tecnológica de Bolívar con un Tutor IA — proyecto de aula.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
