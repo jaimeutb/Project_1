@@ -2,6 +2,7 @@ const { Router } = require('express');
 const ctrl = require('../controllers/materiales.controller');
 const valoracionesCtrl = require('../controllers/valoraciones.controller');
 const reportesCtrl = require('../controllers/reportes.controller');
+const iaCtrl = require('../controllers/ia.controller');
 const { requiereAutenticacion, requiereRol } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 
@@ -24,5 +25,10 @@ router.get('/:material_id/valoraciones', requiereAutenticacion, valoracionesCtrl
 
 // RF-09: reportar un material.
 router.post('/:material_id/reportes', requiereAutenticacion, reportesCtrl.crear);
+
+// RF-14/RF-15/RF-16: Tutor IA sobre el material.
+router.post('/:material_id/ia/explicacion', requiereAutenticacion, iaCtrl.explicacion);
+router.post('/:material_id/ia/practica', requiereAutenticacion, iaCtrl.practica);
+router.post('/:material_id/ia/preguntas', requiereAutenticacion, iaCtrl.preguntar);
 
 module.exports = router;

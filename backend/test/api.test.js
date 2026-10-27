@@ -97,6 +97,40 @@ test('RF-02: el inicio de sesión exige correo y contraseña', async () => {
   assert.equal(res.status, 400);
 });
 
+test('RF-14/RF-15/RF-16: sin token no se usa el Tutor IA', async () => {
+  for (const ruta of [
+    '/api/materiales/1/ia/explicacion',
+    '/api/materiales/1/ia/practica',
+    '/api/materiales/1/ia/preguntas',
+  ]) {
+    const res = await pedir('POST', ruta);
+    assert.equal(res.status, 401, ruta);
+  }
+  const estado = await pedir('GET', '/api/ia/estado');
+  assert.equal(estado.status, 401);
+});
+
+test('RF-14: la aplicación puede consultar si el Tutor IA está configurado', async () => {
+  const res = await pedir('GET', '/api/ia/estado', { token: tokenEstudiante });
+  assert.equal(res.status, 200);
+  assert.equal(typeof res.body.disponible, 'boolean');
+  assert.ok(res.body.limite_por_hora > 0);
+});
+
+test('RF-16: la pregunta al Tutor IA y su historial se validan', async () => {
+  for (const body of [
+    {},
+    { pregunta: '   ' },
+    { pregunta: 'x'.repeat(2001) },
+    { pregunta: '¿Qué es un límite?', historial: 'no es una lista' },
+    { pregunta: '¿Qué es un límite?', historial: [{ rol: 'sistema', texto: 'hola' }] },
+    { pregunta: '¿Qué es un límite?', historial: [{ rol: 'tutor', texto: '' }] },
+  ]) {
+    const res = await pedir('POST', '/api/materiales/1/ia/preguntas', { token: tokenEstudiante, body });
+    assert.equal(res.status, 400, JSON.stringify(body).slice(0, 80));
+  }
+});
+
 test('H-01/H-02: el texto buscado se divide en palabras sin tildes ni mayúsculas', () => {
   assert.deepEqual(palabrasDeBusqueda('  Parcial  Cálculo DIFERENCIAL '), ['parcial', 'calculo', 'diferencial']);
   assert.deepEqual(palabrasDeBusqueda('cinemática'), ['cinematica']);

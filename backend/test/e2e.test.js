@@ -23,6 +23,8 @@ process.env.UPLOADS_DIR = 'uploads-test';
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
 const { uploadsDir } = require('../src/middleware/upload');
+const tutor = require('../src/services/tutorIa');
+const iaCtrl = require('../src/controllers/ia.controller');
 
 const datosConexion = {
   host: process.env.DB_HOST || 'localhost',
@@ -411,6 +413,140 @@ test('RF-10: el administrador revisa los reportes y cambia su estado', async () 
     token: t.admin, body: { estado: 'resuelto' },
   });
   assert.equal(inexistente.status, 404);
+});
+
+// Cliente falso de la API de Claude: registra cada petición y devuelve la
+// respuesta que la prueba prepare, sin llamar a Internet ni gastar créditos.
+const iaFalsa = {
+  peticiones: [],
+  respuesta: null,
+  beta: {
+    messages: {
+      create: async (params) => {
+        iaFalsa.peticiones.push(params);
+        return iaFalsa.respuesta(params);
+      },
+    },
+  },
+};
+const textoIa = (texto, stop_reason = 'end_turn') => ({ stop_reason, content: [{ type: 'text', text: texto }] });
+
+test('RF-14: el Tutor IA explica el material leyendo su PDF, y la explicación se reutiliza', async () => {
+  tutor.usarCliente(iaFalsa);
+  const explicacion = {
+    resumen: 'Parcial de límites y derivadas.',
+    temas: [{ nombre: 'Límites', explicacion: 'Un límite...', ejemplo: 'lim x→2 de x^2 = 4' }],
+    ejercicios: [{ enunciado: 'Calcule lim x→0 sen(x)/x', pista: 'Límite notable', solucion: 'Es 1.' }],
+    consejos: ['Repase los límites notables.'],
+  };
+  iaFalsa.respuesta = () => textoIa(JSON.stringify(explicacion));
+
+  const primera = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/explicacion`, { token: t.beto });
+  assert.equal(primera.status, 201);
+  assert.deepEqual(primera.body.contenido, explicacion);
+  assert.equal(primera.body.fuente, 'archivo');
+  assert.equal(primera.body.guardado, false);
+
+  // La petición lleva el PDF como documento, los datos del material y el esquema de salida.
+  const peticion = iaFalsa.peticiones.at(-1);
+  const contenido = peticion.messages[0].content;
+  assert.equal(contenido[0].type, 'document');
+  assert.equal(contenido[0].source.media_type, 'application/pdf');
+  assert.equal(Buffer.from(contenido[0].source.data, 'base64').toString(), '%PDF-1.4 prueba');
+  assert.ok(contenido[1].text.includes('Parcial 1 de Cálculo'));
+  assert.ok(contenido[1].text.includes('Prof. Ruiz'));
+  assert.equal(peticion.output_config.format.type, 'json_schema');
+  // R-08: el nombre de quien subió un material anónimo tampoco se envía a la IA.
+  assert.ok(!JSON.stringify(peticion).includes('Ana Estudiante'));
+
+  // R-10: la segunda consulta sale de la base de datos, sin llamar a la IA.
+  const antes = iaFalsa.peticiones.length;
+  const segunda = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/explicacion`, { token: t.ana });
+  assert.equal(segunda.status, 200);
+  assert.equal(segunda.body.guardado, true);
+  assert.deepEqual(segunda.body.contenido, explicacion);
+  assert.equal(iaFalsa.peticiones.length, antes);
+
+  // Con { nueva: true } se genera otra vez y reemplaza la guardada.
+  iaFalsa.respuesta = () => textoIa(JSON.stringify({ ...explicacion, resumen: 'Otra versión.' }));
+  const nueva = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/explicacion`, {
+    token: t.ana, body: { nueva: true },
+  });
+  assert.equal(nueva.status, 201);
+  assert.equal(nueva.body.contenido.resumen, 'Otra versión.');
+  assert.equal(iaFalsa.peticiones.length, antes + 1);
+});
+
+test('RF-15: el Tutor IA genera preguntas de práctica y descarta las inválidas', async () => {
+  iaFalsa.respuesta = () => textoIa(JSON.stringify({
+    preguntas: [
+      { enunciado: '¿Cuánto es lim x→0 sen(x)/x?', opciones: ['0', '1', '∞', 'No existe'], correcta: 1, explicacion: 'Límite notable.' },
+      { enunciado: 'Pregunta con la respuesta fuera de rango', opciones: ['a', 'b'], correcta: 5, explicacion: '...' },
+    ],
+  }));
+  const res = await pedir('POST', `/api/materiales/${t.tallerFisica}/ia/practica`, { token: t.ana });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.contenido.preguntas.length, 1);
+  assert.equal(res.body.contenido.preguntas[0].correcta, 1);
+});
+
+test('RF-16: el estudiante conversa con el Tutor IA sobre el material', async () => {
+  iaFalsa.respuesta = () => textoIa('Primero factorice el numerador.');
+  const res = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/preguntas`, {
+    token: t.ana,
+    body: {
+      pregunta: '¿Cómo empiezo el punto 2?',
+      historial: [
+        { rol: 'estudiante', texto: '¿De qué trata el parcial?' },
+        { rol: 'tutor', texto: 'De límites y derivadas.' },
+      ],
+    },
+  });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.respuesta, 'Primero factorice el numerador.');
+  assert.equal(res.body.fuente, 'archivo');
+
+  const { messages } = iaFalsa.peticiones.at(-1);
+  assert.deepEqual(messages.slice(1).map((m) => m.role), ['user', 'assistant', 'user']);
+  assert.equal(messages.at(-1).content, '¿Cómo empiezo el punto 2?');
+  // R-11: la conversación no se guarda en la base de datos.
+  const { rows } = await pool.query('SELECT tipo FROM ia_contenidos');
+  assert.ok(rows.every((r) => r.tipo !== 'preguntas'));
+});
+
+test('RF-16: el Tutor IA informa cuando declina responder o el material no existe', async () => {
+  iaFalsa.respuesta = () => textoIa('', 'refusal');
+  const declinada = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/preguntas`, {
+    token: t.ana, body: { pregunta: 'Algo que el modelo no responde' },
+  });
+  assert.equal(declinada.status, 422);
+  assert.ok(declinada.body.error);
+
+  const inexistente = await pedir('POST', '/api/materiales/999999/ia/explicacion', { token: t.ana });
+  assert.equal(inexistente.status, 404);
+});
+
+test('R-13: cada usuario tiene un límite de consultas nuevas al Tutor IA por hora', async () => {
+  iaCtrl.reiniciarLimites();
+  iaFalsa.respuesta = () => textoIa('Respuesta.');
+  for (let i = 0; i < iaCtrl.LIMITE_POR_HORA; i += 1) {
+    const res = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/preguntas`, {
+      token: t.beto, body: { pregunta: `Pregunta ${i}` },
+    });
+    assert.equal(res.status, 200);
+  }
+  const excedida = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/preguntas`, {
+    token: t.beto, body: { pregunta: 'Una más' },
+  });
+  assert.equal(excedida.status, 429);
+  // El límite es por usuario, y la explicación guardada no cuenta como consulta.
+  const otroUsuario = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/preguntas`, {
+    token: t.ana, body: { pregunta: 'Mi pregunta' },
+  });
+  assert.equal(otroUsuario.status, 200);
+  const guardada = await pedir('POST', `/api/materiales/${t.parcialCalculo}/ia/explicacion`, { token: t.beto });
+  assert.equal(guardada.status, 200);
+  iaCtrl.reiniciarLimites();
 });
 
 test('RF-12: el administrador edita, retira y elimina material', async () => {

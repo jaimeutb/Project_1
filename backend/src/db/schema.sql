@@ -80,3 +80,20 @@ CREATE TABLE IF NOT EXISTS reportes (
     resuelto_en TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_reportes_estado ON reportes(estado);
+
+-- ---------------------------------------------------------------- ia_contenidos
+-- RF-14/RF-15: explicación y preguntas de práctica que generó el Tutor IA para un
+-- material. Se guardan para reutilizarlas con todos los estudiantes (regla R-10):
+-- la segunda consulta es inmediata y no tiene costo. Las conversaciones del chat
+-- (RF-16) no se guardan (regla R-11).
+CREATE TABLE IF NOT EXISTS ia_contenidos (
+    id          SERIAL PRIMARY KEY,
+    material_id INTEGER      NOT NULL REFERENCES materiales(id) ON DELETE CASCADE,
+    tipo        VARCHAR(20)  NOT NULL CHECK (tipo IN ('explicacion', 'practica')),
+    contenido   JSONB        NOT NULL,
+    -- 'archivo' si la IA leyó el archivo; 'metadatos' si solo conoció el título y la descripción.
+    fuente      VARCHAR(20)  NOT NULL CHECK (fuente IN ('archivo', 'metadatos')),
+    modelo      VARCHAR(60)  NOT NULL,
+    creado_en   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    UNIQUE (material_id, tipo)
+);
